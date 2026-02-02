@@ -1,0 +1,41 @@
+# fail_fast: true  # Uncomment if you want to stop at first failure
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: no-commit-to-branch
+        args: ["--branch", "main", "--branch", "develop"] # Protect main branches
+      - id: check-added-large-files
+        args: ["--maxkb=1000"] # Prevent large files (adjust as needed)
+      - id: check-yaml
+      - id: check-json
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+      - id: end-of-file-fixer # Fixes missing newlines
+
+  - repo: https://github.com/ambv/black
+    rev: 24.3.0
+    hooks:
+      - id: black
+        language_version: python3.10 # Match your Python version
+
+  - repo: https://github.com/timothycrosley/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["--profile", "black"] # Make isort compatible with black
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          [types-setuptools, types-requests, types-PyYAML]
+        args: ["--ignore-missing-imports"] # Helpful for third-party libs
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        additional_dependencies: [Flake8-pyproject]
