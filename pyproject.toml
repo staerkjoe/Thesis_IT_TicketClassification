@@ -1,6 +1,7 @@
 [project]
 name = "thesis-it-ticketclassification"
 version = "0.1.0"
+package-mode=false
 description = ""
 authors = [
     {name = "Your Name",email = "you@example.com"}
