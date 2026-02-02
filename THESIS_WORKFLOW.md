@@ -76,6 +76,17 @@ poetry run python your_script.py
 git add .
 git commit -m "feat: implemented NER extraction for ticket bodies"
 ```
+If the commit fails and you see messages like:
+- trailing-whitespace
+- fix end of files
+- files were modified by this hook
+
+Then simply run:
+
+```bash
+git add .
+git commit -m "feat: implemented NER extraction for ticket bodies"
+```
 
 ### Push Branch
 ```bash
