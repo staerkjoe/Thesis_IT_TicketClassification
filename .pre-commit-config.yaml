@@ -39,3 +39,4 @@ repos:
     hooks:
       - id: flake8
         additional_dependencies: [Flake8-pyproject]
+        args: ["--max-line-length=120", "--extend-ignore=E203"]
