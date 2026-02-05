@@ -45,6 +45,18 @@ git pull origin main --no-rebase
 If the Nano editor opens for a merge message:
 Press Ctrl+O, Enter, then Ctrl+X.
 
+### Switch to Branch:
+
+```bash
+git checkout feature/your-task-name
+```
+
+### Merge Main:
+
+```bash
+git merge main
+```
+
 ---
 
 ## 🟡 Phase 3: Development & Feature Work
