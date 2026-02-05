@@ -121,11 +121,7 @@ Merge conflicts happen when two people edit the same lines in the same file.
 When Git reports a conflict, open the file and look for markers like:
 
 ```text
-<<<<<<< HEAD
 your version
-=======
-your friend's version
->>>>>>> main
 ```
 
 Edit the file to keep the correct content and remove all markers.
