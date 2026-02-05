@@ -102,6 +102,7 @@ Go to GitHub, click “Compare & pull request”, and assign your friend as Revi
 
 ### Update Local Main
 ```bash
+git fetch
 git checkout main
 git pull origin main
 ```
