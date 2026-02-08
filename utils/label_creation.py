@@ -17,7 +17,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import pandas as pd
 import yaml
@@ -236,12 +236,12 @@ class AutoTaggerServiceNow:
         Returns:
             List of dicts with keys: label, reasoning, confidence_score
         """
-        predictions = []
+        predictions: List[Dict[str, object]] = []
 
         # Split response into sections
         lines = llm_response.split("\n")
 
-        current_pred: Dict[str, Any] = {}
+        current_pred: Dict[str, object] = {}
         for line in lines:
             line = line.strip()
             if not line:
@@ -252,7 +252,7 @@ class AutoTaggerServiceNow:
             if label_match:
                 if current_pred:
                     predictions.append(current_pred)
-                    # current_pred: Dict[str, Any] = {}
+                    # current_pred: Dict[str, object] = {}
                 current_pred["label"] = label_match.group(0).strip()
 
             # Look for confidence score
