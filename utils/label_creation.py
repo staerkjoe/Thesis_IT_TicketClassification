@@ -17,7 +17,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import yaml
@@ -36,7 +36,12 @@ class AutoTaggerServiceNow:
     Optimized for parallel processing and performance
     """
 
-    def __init__(self, config_path=None, use_async=True, max_workers=5):
+    def __init__(
+        self,
+        config_path: Optional[str] = None,
+        use_async: bool = True,
+        max_workers: int = 5,
+    ) -> None:
         """
         Initialize the AutoTagger with configuration
 
@@ -58,11 +63,13 @@ class AutoTaggerServiceNow:
         self.use_async = use_async
         self.max_workers = max_workers
         self.cache_enabled = True
-        self._prediction_cache = {}
+        self._prediction_cache: Dict[str, str] = {}
 
         # Load config
         if config_path is None:
-            config_path = Path(__file__).parent.parent / "config" / "config_labels.yaml"
+            config_path = str(
+                Path(__file__).parent.parent / "config" / "config_labels.yaml"
+            )
 
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)
@@ -93,7 +100,7 @@ class AutoTaggerServiceNow:
         combined = f"{description}::{examples_text}"
         return hashlib.md5(combined.encode()).hexdigest()
 
-    def test_connection(self):
+    def test_connection(self) -> bool:
         """Test Azure OpenAI connection"""
         try:
             self.client.chat.completions.create(
@@ -226,7 +233,7 @@ class AutoTaggerServiceNow:
                     return "UNKNOWN"
         return "UNKNOWN"
 
-    def parse_llm_response(self, llm_response: str) -> List[Dict]:
+    def parse_llm_response(self, llm_response: str) -> List[Dict[str, Any]]:
         """
         Parse LLM response to extract top 3 predictions with labels, reasoning, and confidence scores
 
@@ -236,12 +243,12 @@ class AutoTaggerServiceNow:
         Returns:
             List of dicts with keys: label, reasoning, confidence_score
         """
-        predictions: List[Dict[str, object]] = []
+        predictions: List[Dict[str, Any]] = []
 
         # Split response into sections
         lines = llm_response.split("\n")
 
-        current_pred: Dict[str, object] = {}
+        current_pred: Dict[str, Any] = {}
         for line in lines:
             line = line.strip()
             if not line:
@@ -252,7 +259,7 @@ class AutoTaggerServiceNow:
             if label_match:
                 if current_pred:
                     predictions.append(current_pred)
-                    # current_pred: Dict[str, object] = {}
+                    current_pred = {}
                 current_pred["label"] = label_match.group(0).strip()
 
             # Look for confidence score
@@ -427,10 +434,10 @@ class AutoTaggerServiceNow:
         if examples_text is None:
             examples_text = self.few_shot_examples
 
-        results = []
+        results: List[Dict[str, Any]] = []
         semaphore = asyncio.Semaphore(semaphore_limit)
 
-        async def process_row(row: pd.Series) -> List[Dict]:
+        async def process_row(row: pd.Series) -> List[Dict[str, Any]]:
             async with semaphore:
                 number = row[number_column]
                 text = row[text_column]
@@ -440,11 +447,11 @@ class AutoTaggerServiceNow:
                     text, examples_text
                 )
 
-                # Parse response
+                # Parse response to get 3 predictions
                 predictions = self.parse_llm_response(llm_response)
 
-                # Create results for this row
-                row_results: List[Dict] = []
+                # Create results for this row (3 rows, one for each prediction)
+                row_results: List[Dict[str, Any]] = []
                 for pred in predictions:
                     row_results.append(
                         {
@@ -465,7 +472,7 @@ class AutoTaggerServiceNow:
             asyncio.as_completed(tasks), total=len(tasks), desc="Processing tickets"
         ):
             row_results = await coro
-            results.extend(row_results)
+            results.extend(row_results)  # Extend, not append, to add all 3 rows
 
         # Create DataFrame
         result_df = pd.DataFrame(results)
@@ -500,18 +507,18 @@ class AutoTaggerServiceNow:
         if examples_text is None:
             examples_text = self.few_shot_examples
 
-        def process_row(row: pd.Series) -> List[Dict]:
+        def process_row(row: pd.Series) -> List[Dict[str, Any]]:
             number = row[number_column]
             text = row[text_column]
 
             # Get LLM prediction
             llm_response = self.predict_tags_with_llm(text, examples_text)
 
-            # Parse response
+            # Parse response to get 3 predictions
             predictions = self.parse_llm_response(llm_response)
 
-            # Create results for this row
-            row_results: List[Dict] = []
+            # Create results for this row (3 rows, one for each prediction)
+            row_results: List[Dict[str, Any]] = []
             for pred in predictions:
                 row_results.append(
                     {
@@ -524,7 +531,7 @@ class AutoTaggerServiceNow:
                 )
             return row_results
 
-        results = []
+        results: List[Dict[str, Any]] = []
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all tasks
@@ -536,7 +543,7 @@ class AutoTaggerServiceNow:
             ):
                 try:
                     row_results = future.result()
-                    results.extend(row_results)
+                    results.extend(row_results)  # Extend, not append, to add all 3 rows
                 except Exception as e:
                     logger.error(f"Error processing row: {e}")
 
@@ -599,9 +606,8 @@ class AutoTaggerServiceNow:
         """Clear prediction cache"""
         self._prediction_cache.clear()
         logger.info("Cache cleared")
-        return None
 
-    def get_cache_stats(self) -> Dict:
+    def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics"""
         return {
             "cache_size": len(self._prediction_cache),
@@ -614,4 +620,3 @@ class AutoTaggerServiceNow:
         # Clear cache when examples change
         if self.cache_enabled:
             self.clear_cache()
-        return None
