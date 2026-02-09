@@ -68,32 +68,51 @@ scenarios:
 few_shot_examples: |
   Description: The customer was supposed to have their internet and TV activated today, but the order has not gone through yet. It still shows as "Activation in progress."
   Tag: (1d Broadband, 2d Fiber), 3 product status
+  Reasoning: The case describes an order that should be active but remains in an "activation in progress" state, which is a service/order status issue for broadband over fiber.
+  Reasoning_Confidence: 0.90
+  Label_Confidence: 0.90
 
 
-  Description: Wifi Health is Excellent despite high dBm, is this correct? Expected Result:The estimated quality of the wifi should represent the high dBm
+  Description: Wifi Health is Excellent despite high dBm, is this correct? Expected Result: The estimated quality of the wifi should represent the high dBm
   Tag: (1d Broadband, 2d Fiber), 3 Performance issues
+  Reasoning: The customer questions the WiFi quality metric versus signal/level (dBm), indicating a perceived performance/quality mismatch rather than activation, billing, or login.
+  Reasoning_Confidence: 0.85
+  Label_Confidence: 0.80
 
 
-  Description: I get an error message that I have to use the app in Denmark before I can use it abroad. ExpectedBehaviour:Login to use yousee play without any problem.StepsToReproduce:Playback error on Yousee play
-  Tag: (1g Self Service, 2g Yousee TV Play), 3 Login issues
+  Description: I get an error message that I have to use the app in Denmark before I can use it abroad. ExpectedBehaviour: Login to use yousee play without any problem. StepsToReproduce: Playback error on Yousee play
+  Tag: (1g Self service, 2g YS-play), 3 Login issues
+  Reasoning: The error blocks usage of the YS-play app due to location/first-time usage requirement and prevents successful access, which aligns best with login/access issues in self-service.
+  Reasoning_Confidence: 0.80
+  Label_Confidence: 0.78
 
 
-  Description: The router does not have VoIP configuration. The router has been reset.  Expected Result:
-  The router should receive VoIP configuration when customers have VoIP subscriptions.
+  Description: The router does not have VoIP configuration. The router has been reset. Expected Result: The router should receive VoIP configuration when customers have VoIP subscriptions.
   Tag: (1e VoIP, 2e COAX), 3 technical issues
+  Reasoning: Missing VoIP configuration after reset indicates a technical provisioning/config issue for VoIP service; the product is clearly VoIP (not broadband) and the symptom is technical.
+  Reasoning_Confidence: 0.88
+  Label_Confidence: 0.82
 
 
-  Description: The customer is experiencing problems logging into Disney+. After entering the email address and pressing "continue" the error "an error occurred" appears on the screen.
-  I have informed the customer that the app is integrated and that I will let our backend know. He does not have a smartTV and therefore we cannot test if the SmartTV app has the same issue, but I have told him that he should create a free hotmail and change his Disney+ account to that, so he can get it to work - but issue should be fixed for platform and for future customers.
+  Description: The customer is experiencing problems logging into Disney+. After entering the email address and pressing "continue" the error "an error occurred" appears on the screen. I have informed the customer that the app is integrated and that I will let our backend know.
   Tag: (1c TV, 2c Fiber), 3 Login issues
+  Reasoning: The customer cannot proceed past the email step in Disney+ authentication, which is a login problem tied to the TV integrated app/service (customer’s TV product context is fiber).
+  Reasoning_Confidence: 0.85
+  Label_Confidence: 0.75
 
 
   Description: Cannot proceed with the order, Fiber should have been activated on the 16th, but the basket and order are at a standstill.
-  Tag: (1d Broadband, 2d Fiber, 3 Order activation"
+  Tag: (1d Broadband, 2d Fiber), 3 Order activation
+  Reasoning: The core issue is that the order cannot move forward and activation did not complete on the planned date, which matches order activation (not general product status).
+  Reasoning_Confidence: 0.90
+  Label_Confidence: 0.88
 
 
   Description: Hiper has requested the SBBU rebooking, but Dawn is not allowing it
   Tag: (1d Broadband, 2d COAX), 3 Missing rights to access
+  Reasoning: The user attempts a specific Dawn action (SBBU rebooking) but is blocked by system permissions/authorization, which aligns with missing access rights; broadband context is implied by the workflow.
+  Reasoning_Confidence: 0.78
+  Label_Confidence: 0.65
 
 prompt_template: |
   You are an expert in Nuuday telecommunication service classfication, top notch at categorizing Service Now for different brands such as YouSee, Telmore, Eesy, and Hiper customer tickets with super high accuracy.
@@ -104,11 +123,11 @@ prompt_template: |
 
   Rules:
   1. Return EXACTLY the format: (Category, Subcategory), Scenarios
-  2. Provide the top 3 most appropriate combinations of category and subcategory and scenarios based on the description
+  2. Provide the most appropriate combination of category and subcategory and scenarios based on the description
   3. If you're unsure or if the description doesn't fit any category, return: (1 Misc incidents, 2 Other), Scenarios
   4. Be consistent and accurate in your classifications
   5. Explain your reasoning for each combination of the classification briefly.
-  6. Additionally provide a confidence score for each of the 3 combinations (a score between 0 and 1). The score should represent how sure you are about the classification
+  6. Additionally provide a confidence score (a score between 0 and 1). The score should represent how sure you are about the classification
 
   Examples:
   {examples_text}
