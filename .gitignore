@@ -42,6 +42,8 @@ Thumbs.db
 #############################
 .ipynb_checkpoints
 */.ipynb_checkpoints/*.ipynb
+.ipynb_aml_checkpoints/
+.ipynb_checkpoints/
 
 # Data and model files #
 ########################
