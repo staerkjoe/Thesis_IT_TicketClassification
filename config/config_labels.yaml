@@ -1,8 +1,8 @@
 hierarchical_categories:
-  - ["1a MV (Mobile voice),", "2a Main product"]
-  - ["1a MV (Mobile voice),", "2a Smartwatch"]
-  - ["1a MV (Mobile voice),", "2a Datasharingcard"]
-  - ["1a MV (Mobile voice),", "2a Nummerportering"]
+  - ["1a MV Mobile voice,", "2a Main product"]
+  - ["1a MV Mobile voice,", "2a Smartwatch"]
+  - ["1a MV Mobile voice,", "2a Datasharingcard"]
+  - ["1a MV Mobile voice,", "2a Nummerportering"]
   - ["1b MBB", "2b Main product"]
   - ["1b MBB", "2b Datasharingcard"]
   - ["1b MBB", "2b Router"]
