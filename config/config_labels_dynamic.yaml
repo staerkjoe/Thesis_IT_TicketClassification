@@ -1,8 +1,8 @@
 hierarchical_categories:
-  - ["1a MV (Mobile voice),", "2a Main product"]
-  - ["1a MV (Mobile voice),", "2a Smartwatch"]
-  - ["1a MV (Mobile voice),", "2a Datasharingcard"]
-  - ["1a MV (Mobile voice),", "2a Nummerportering"]
+  - ["1a MV Mobile voice,", "2a Main product"]
+  - ["1a MV Mobile voice,", "2a Smartwatch"]
+  - ["1a MV Mobile voice,", "2a Datasharingcard"]
+  - ["1a MV Mobile voice,", "2a Nummerportering"]
   - ["1b MBB", "2b Main product"]
   - ["1b MBB", "2b Datasharingcard"]
   - ["1b MBB", "2b Router"]
@@ -67,15 +67,15 @@ scenarios:
 
 # Dynamic prompting settings
 retrieval:
-  method: "tfidf"  # Options: tfidf, sentence-transformers (for future)
-  num_examples: 3  # Number of examples to retrieve per query
-  min_similarity: 0.1  # Minimum similarity score (0-1)
+  method: "tfidf"
+  num_examples: 3
+  min_similarity: 0.1
 
 # Example database
 example_database:
-  path: "prediction_results.csv"  # Path to labeled examples
-  text_column: "text"  # Column with descriptions
-  label_column: "label"  # Column with labels (top1 prediction)
+  path: "prediction_results_cisc.csv"  # Pointing to your silver dataset
+  text_column: "text"
+  label_column: "label"
 
 prompt_template: |
   You are an expert in Nuuday telecommunication service classfication, top notch at categorizing Service Now for different brands such as YouSee, Telmore, Eesy, and Hiper customer tickets with super high accuracy.
@@ -86,13 +86,13 @@ prompt_template: |
 
   Rules:
   1. Return EXACTLY the format: (Category, Subcategory), Scenarios
-  2. Provide the top 3 most appropriate combinations of category and subcategory and scenarios based on the description
+  2. Provide the most appropriate combination of category and subcategory and scenarios based on the description
   3. If you're unsure or if the description doesn't fit any category, return: (1 Misc incidents, 2 Other), Scenarios
   4. Be consistent and accurate in your classifications
   5. Explain your reasoning for each combination of the classification briefly.
-  6. Additionally provide a confidence score for each of the 3 combinations (a score between 0 and 1). The score should represent how sure you are about the classification
+  6. Additionally provide a confidence score (a score between 0 and 1). The score should represent how sure you are about the classification
 
-  Examples (dynamically retrieved based on similarity):
+  Examples:
   {examples_text}
 
   Input Description: {description}

@@ -414,7 +414,7 @@ class AutoTaggerServiceNow:
             "label": winning_label,
             "reasoning": best_sample["reasoning"],
             "scientific_confidence": round(scientific_confidence, 4),
-            "reasoning_confidence": best_sample["confidence_score"],
+            "max_path_confidence": best_sample["confidence_score"],
             "consistency_score": round(consistency, 4),
             "vote_count": label_counts[winning_label],
             "total_samples": n_total,
@@ -468,8 +468,8 @@ class AutoTaggerServiceNow:
                             "scientific_confidence": agg_result[
                                 "scientific_confidence"
                             ],
-                            "reasoning_confidence": agg_result.get(
-                                "reasoning_confidence", 0.0
+                            "max_path_confidence": agg_result.get(
+                                "max_path_confidence", 0.0
                             ),
                             "consistency": agg_result.get("consistency_score", 0.0),
                         }
