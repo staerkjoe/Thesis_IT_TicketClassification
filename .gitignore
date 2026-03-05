@@ -1,3 +1,13 @@
+# Ignore GitHub workflow/config folder
+.github/
+
+# Python type-checking cache
+.mypy_cache/
+
+# Python virtual environment
+.venv/
+
+
 # Compiled source #
 ###################
 *.com
