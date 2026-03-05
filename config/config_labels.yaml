@@ -69,49 +69,42 @@ few_shot_examples: |
   Description: The customer was supposed to have their internet and TV activated today, but the order has not gone through yet. It still shows as "Activation in progress."
   Tag: (1d Broadband, 2d Fiber), 3 product status
   Reasoning: The case describes an order that should be active but remains in an "activation in progress" state, which is a service/order status issue for broadband over fiber.
-  Reasoning_Confidence: 0.90
   Label_Confidence: 0.90
 
 
   Description: Wifi Health is Excellent despite high dBm, is this correct? Expected Result: The estimated quality of the wifi should represent the high dBm
   Tag: (1d Broadband, 2d Fiber), 3 Performance issues
   Reasoning: The customer questions the WiFi quality metric versus signal/level (dBm), indicating a perceived performance/quality mismatch rather than activation, billing, or login.
-  Reasoning_Confidence: 0.85
   Label_Confidence: 0.80
 
 
   Description: I get an error message that I have to use the app in Denmark before I can use it abroad. ExpectedBehaviour: Login to use yousee play without any problem. StepsToReproduce: Playback error on Yousee play
   Tag: (1g Self service, 2g YS-play), 3 Login issues
   Reasoning: The error blocks usage of the YS-play app due to location/first-time usage requirement and prevents successful access, which aligns best with login/access issues in self-service.
-  Reasoning_Confidence: 0.80
   Label_Confidence: 0.78
 
 
   Description: The router does not have VoIP configuration. The router has been reset. Expected Result: The router should receive VoIP configuration when customers have VoIP subscriptions.
   Tag: (1e VoIP, 2e COAX), 3 technical issues
   Reasoning: Missing VoIP configuration after reset indicates a technical provisioning/config issue for VoIP service; the product is clearly VoIP (not broadband) and the symptom is technical.
-  Reasoning_Confidence: 0.88
   Label_Confidence: 0.82
 
 
   Description: The customer is experiencing problems logging into Disney+. After entering the email address and pressing "continue" the error "an error occurred" appears on the screen. I have informed the customer that the app is integrated and that I will let our backend know.
   Tag: (1c TV, 2c Fiber), 3 Login issues
   Reasoning: The customer cannot proceed past the email step in Disney+ authentication, which is a login problem tied to the TV integrated app/service (customer’s TV product context is fiber).
-  Reasoning_Confidence: 0.85
   Label_Confidence: 0.75
 
 
   Description: Cannot proceed with the order, Fiber should have been activated on the 16th, but the basket and order are at a standstill.
   Tag: (1d Broadband, 2d Fiber), 3 Order activation
   Reasoning: The core issue is that the order cannot move forward and activation did not complete on the planned date, which matches order activation (not general product status).
-  Reasoning_Confidence: 0.90
   Label_Confidence: 0.88
 
 
   Description: Hiper has requested the SBBU rebooking, but Dawn is not allowing it
   Tag: (1d Broadband, 2d COAX), 3 Missing rights to access
   Reasoning: The user attempts a specific Dawn action (SBBU rebooking) but is blocked by system permissions/authorization, which aligns with missing access rights; broadband context is implied by the workflow.
-  Reasoning_Confidence: 0.78
   Label_Confidence: 0.65
 
 prompt_template: |
