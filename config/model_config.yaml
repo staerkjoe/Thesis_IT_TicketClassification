@@ -11,7 +11,7 @@ model:
 lora:
   r: 16
   lora_alpha: 32
-  lora_dropout: 0.05
+  lora_dropout: 0.0
   bias: "none"
   target_modules:
     - "q_proj"
@@ -32,8 +32,8 @@ training:
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.05
   num_train_epochs: 1 #
-  bf16: true
-  fp16: false
+  bf16: false
+  fp16: true
   logging_steps: 5 #
   eval_strategy: "steps"
   eval_steps: 20 #
@@ -50,6 +50,8 @@ wandb:
   tags:
     - "qlora"
     - "llama-3.1"
+  log_prediction_samples: true
+  prediction_sample_size: 25
 
 # CSV must contain: text, label
 data:
