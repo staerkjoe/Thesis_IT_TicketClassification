@@ -1,3 +1,26 @@
+# =========================
+# Training outputs
+# =========================
+outputs/
+checkpoints/
+
+# =========================
+# Unsloth cache
+# =========================
+unsloth_compiled_cache/
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+
+# =========================
+# Env / misc
+# =========================
+.env
+wandb/
+
 # Ignore GitHub workflow/config folder
 .github/
 
