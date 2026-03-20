@@ -1,3 +1,6 @@
+outputs/
+unsloth_compiled_cache/
+wandb/
 # Ignore GitHub workflow/config folder
 .github/
 
