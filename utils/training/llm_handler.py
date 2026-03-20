@@ -68,6 +68,9 @@ def load_model_for_training(cfg: dict) -> Tuple:
         load_in_4bit=m["load_in_4bit"],
         token=os.environ.get("HF_TOKEN"),
     )
+    # ADD THIS — tell the tokenizer what its actual EOS token is
+    tokenizer.eos_token = "<|eot_id|>"
+    tokenizer.pad_token = tokenizer.eos_token  # also good practice
 
     model = FastLanguageModel.get_peft_model(
         model,
