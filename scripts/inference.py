@@ -19,7 +19,7 @@ from transformers import TextStreamer
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from utils.models.llm_handler import (  # noqa: E402
+from utils.training.llm_handler import (  # noqa: E402
     build_system_prompt,
     load_labels_config,
     load_model_for_inference,

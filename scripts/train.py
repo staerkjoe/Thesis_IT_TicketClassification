@@ -8,6 +8,8 @@
 # Run: poetry run python scripts/train.py --config config/model_config.yaml
 # =============================================================================
 
+import unsloth  # noqa: F401  — must be first to apply all optimizations
+
 import argparse
 import logging
 import os
@@ -20,13 +22,19 @@ from datasets import load_dataset
 from dotenv import load_dotenv
 from trl import SFTConfig, SFTTrainer
 
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from utils.models.llm_handler import (  # noqa: E402
+from utils.training.llm_handler import (  # noqa: E402
     format_prompt,
     load_labels_config,
     load_model_for_training,
     push_model_to_hub,
+)
+
+from utils.training.wandb_plots import (  # noqa: E402
+    WandbEvalPredictionCallback,
+    log_dataset_overview,
 )
 
 logging.basicConfig(
@@ -91,7 +99,12 @@ def train(cfg: dict) -> None:
     model, tokenizer = load_model_for_training(cfg)
     dataset = load_data(cfg, tokenizer)
 
+    # Log dataset charts/tables to W&B once at the beginning
+    log_dataset_overview(dataset["train"], dataset["eval"])
+
     t = cfg["training"]
+    wb_cfg = cfg.get("wandb", {})
+
     training_args = SFTConfig(
         output_dir=t["output_dir"],
         per_device_train_batch_size=t["per_device_train_batch_size"],
@@ -124,6 +137,16 @@ def train(cfg: dict) -> None:
         eval_dataset=dataset["eval"],
         args=training_args,
     )
+
+    # Optional custom W&B callback for prediction tables + confusion matrix
+    if wb_cfg.get("log_prediction_samples", False):
+        trainer.add_callback(
+            WandbEvalPredictionCallback(
+                tokenizer=tokenizer,
+                eval_dataset=dataset["eval"],
+                max_samples=wb_cfg.get("prediction_sample_size", 25),
+            )
+        )
 
     logger.info("Starting training...")
     trainer.train()
