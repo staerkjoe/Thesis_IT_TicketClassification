@@ -2,6 +2,22 @@
 # =============================================================================
 # scripts/train.py
 # poetry run python scripts/train.py --config config/model_config.yaml
+#
+# W&B lifecycle
+# ─────────────
+#   wandb.init()              called in init_wandb()
+#   trainer.remove_callback() removes WandbCallback AFTER SFTTrainer is built
+#                             so the Trainer never touches the W&B run
+#   run_final_evaluation()    logs predictions while run is still open
+#   run.finish()              __main__ try/finally, always last
+#
+# WHY remove_callback() instead of report_to=[]
+#   report_to=[] stops the Trainer from adding WandbCallback at init time,
+#   but SFTTrainer (trl) and the HF Trainer still detect an active wandb run
+#   in the environment and can re-attach or trigger shutdown hooks.
+#   Calling trainer.remove_callback(WandbCallback) after construction is the
+#   only reliable way to guarantee the Trainer never calls wandb.finish().
+#   We keep report_to=[] as well for belt-and-suspenders.
 # =============================================================================
 
 import argparse
@@ -9,17 +25,20 @@ import logging
 import os
 import pathlib
 import sys
+import warnings
 from typing import Any
 
 import unsloth  # noqa: F401 — must be first
 import yaml
 from datasets import load_dataset
 from dotenv import load_dotenv
+from transformers.integrations import WandbCallback
 from trl import SFTConfig, SFTTrainer
 
 import wandb as _wandb
 
 wandb: Any = _wandb
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -32,10 +51,16 @@ from utils.training.llm_handler import (  # noqa: E402
 from utils.training.wandb_plots import (  # noqa: E402
     WandbEvalPredictionCallback,
     WandbLossCallback,
+    init_wandb_metrics,
     log_dataset_overview,
     log_lora_efficiency,
     run_final_evaluation,
 )
+
+# Suppress the transformers attention mask deprecation warning.
+# It uses %-style logging with a FutureWarning class as a positional arg,
+# which causes a TypeError in Python's logging formatter — not our code.
+warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -76,22 +101,32 @@ def load_data(cfg: dict, tokenizer):
     return dataset
 
 
-def init_wandb(cfg: dict) -> None:
+def init_wandb(cfg: dict) -> wandb.sdk.wandb_run.Run:
+    """
+    Initialise W&B, define metric axes, and return the Run object.
+    The Run object is passed explicitly through the call stack so we never
+    rely on the wandb.run global, which W&B's atexit handler can null out.
+    """
     wb = cfg["wandb"]
     os.environ["WANDB_PROJECT"] = wb["project"]
-    wandb.init(
+    run = wandb.init(
         project=wb["project"],
         name=wb.get("run_name") or None,
         tags=wb.get("tags", []),
         config=cfg,
     )
+    init_wandb_metrics()
+    return run
 
 
-def train(cfg: dict) -> None:
+def train(cfg: dict, run: wandb.sdk.wandb_run.Run) -> None:
+    """
+    Main training function. Does NOT call wandb.finish() or run.finish().
+    That is __main__'s responsibility so the run stays open for evaluation.
+    """
     model, tokenizer = load_model_for_training(cfg)
     dataset = load_data(cfg, tokenizer)
 
-    # Log LoRA param breakdown and label distributions once at run start
     log_lora_efficiency(model, cfg)
     log_dataset_overview(dataset["train"], dataset["eval"])
 
@@ -122,17 +157,14 @@ def train(cfg: dict) -> None:
         save_strategy=t["save_strategy"],
         save_steps=t["save_steps"],
         save_total_limit=t["save_total_limit"],
-        report_to="wandb",
+        report_to=[],  # belt-and-suspenders: tells Trainer not to add WandbCallback
         seed=t["seed"],
         dataloader_num_workers=t["dataloader_num_workers"],
         dataset_text_field="formatted_text",
-        push_to_hub=False,  # we push manually below after evaluation
+        push_to_hub=False,
     )
 
-    # WandbEvalPredictionCallback is a no-op stub during training.
-    # Kept here so the config flag log_prediction_samples still works
-    # without breaking imports. Real predictions come from run_final_evaluation.
-    callbacks = [WandbLossCallback()]
+    callbacks = [WandbLossCallback(run=run)]
     if wb_cfg.get("log_prediction_samples", False):
         callbacks.append(
             WandbEvalPredictionCallback(
@@ -153,27 +185,29 @@ def train(cfg: dict) -> None:
         dataset_kwargs={"append_concat_token": False},
     )
 
+    # Belt-and-suspenders: explicitly remove WandbCallback even if the Trainer
+    # somehow added it despite report_to=[]. This is the key fix — without this,
+    # SFTTrainer can still detect the active wandb run and attach its own callback
+    # which calls wandb.finish() when training ends.
+    trainer.remove_callback(WandbCallback)
+    logger.info("WandbCallback removed from Trainer — W&B lifecycle is fully manual.")
+
     logger.info("Starting training...")
     trainer.train()
     logger.info("Training complete.")
 
-    # -------------------------------------------------------------------------
-    # Post-training evaluation
-    # Run generate() on the full eval set now that training is done and the
-    # model is in a stable state. Produces predictions_final.csv and logs
-    # the prediction table, accuracy, macro F1, and confusion matrix to W&B.
-    # -------------------------------------------------------------------------
+    # Run is still open here because WandbCallback was removed.
+    # Pass run explicitly — do not rely on wandb.run global.
     run_final_evaluation(
         model=model,
         tokenizer=tokenizer,
         eval_dataset=dataset["eval"],
         output_dir=t["output_dir"],
+        run=run,
     )
 
     if t.get("push_to_hub", False):
         push_model_to_hub(model, tokenizer, cfg)
-
-    wandb.finish()
 
 
 if __name__ == "__main__":
@@ -182,5 +216,11 @@ if __name__ == "__main__":
     parser.add_argument("--config", default="config/model_config.yaml")
     args = parser.parse_args()
     cfg = load_config(args.config)
-    init_wandb(cfg)
-    train(cfg)
+
+    run = init_wandb(cfg)
+    try:
+        train(cfg, run=run)
+    finally:
+        # Only place run.finish() is called. The try/finally guarantees it
+        # runs even if train() raises an exception mid-way.
+        run.finish()
