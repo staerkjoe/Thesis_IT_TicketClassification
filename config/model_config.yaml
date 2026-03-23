@@ -46,7 +46,7 @@ training:
 
 wandb:
   project: "thesis-it-ticket-classification"
-  run_name: "Test2"
+  run_name: "Test8"
   tags:
     - "qlora"
     - "llama-3.1"
