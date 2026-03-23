@@ -1,78 +1,21 @@
 # =============================================================================
 # utils/training/wandb_plots.py
 # =============================================================================
-#
-# The Run object is threaded explicitly through every function that logs.
-# No function relies on the wandb.run global — W&B 0.25.0's atexit handler
-# can null that out before post-training evaluation runs.
-#
-# WHAT GETS LOGGED
-# ─────────────────────────────────────────────────────────────────────────────
-# Run summary:
-#   dataset/train_size, dataset/eval_size
-#   lora/trainable_params, lora/total_params, lora/trainable_pct
-#   predictions/final_accuracy, predictions/final_macro_f1
-#
-# Once at run start:
-#   dataset/train_label_distribution   Table
-#   dataset/eval_label_distribution    Table
-#   lora/param_breakdown               Bar chart — trainable vs frozen
-#
-# Every training step (WandbLossCallback):
-#   charts/loss           Combined line chart — train + eval in ONE panel
-#   loss/train            Scalar
-#   loss/eval             Scalar
-#   metrics/perplexity    exp(eval_loss)
-#   metrics/grad_norm     Gradient norm
-#   train/learning_rate   LR schedule
-#   train/global_step     Shared x-axis
-#
-# After training (run_final_evaluation):
-#   predictions/final_table        text | predicted_label | true_label | correct
-#   predictions/final_accuracy     scalar
-#   predictions/final_macro_f1     scalar
-#   predictions/confusion_matrix   plot
-#   Local: {output_dir}/predictions_final.csv  (always saved, even if W&B fails)
-# =============================================================================
 
 import logging
-import math
 import os
 from typing import Any, List, Optional
 
+import matplotlib.pyplot as plt
 import pandas as pd
 import torch
+from sklearn.metrics import f1_score
 
 import wandb as _wandb
 
 wandb: Any = _wandb
 logger = logging.getLogger(__name__)
-
-from sklearn.metrics import f1_score
-from transformers import TrainerCallback
-
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# W&B metric definitions
-# ---------------------------------------------------------------------------
-
-
-def init_wandb_metrics() -> None:
-    """
-    Declare custom metric axes so loss/train and loss/eval share one panel.
-    Call immediately after wandb.init() in init_wandb() (train.py).
-    """
-    if wandb.run is None:
-        return
-
-    wandb.define_metric("train/global_step")
-    wandb.define_metric("loss/*", step_metric="train/global_step")
-    wandb.define_metric("metrics/*", step_metric="train/global_step")
-    wandb.define_metric("train/learning_rate", step_metric="train/global_step")
-
-    logger.info("W&B metric axes defined.")
 
 
 # ---------------------------------------------------------------------------
@@ -96,22 +39,6 @@ def _extract_label(generated_text: str) -> str:
         if line:
             return line
     return text
-
-
-def _align_series(
-    all_steps: List[int],
-    steps: List[int],
-    values: List[float],
-) -> List[float]:
-    """Forward-fill sparse series onto a dense step list."""
-    lookup = dict(zip(steps, values))
-    result: List[float] = []
-    last = float("nan")
-    for s in all_steps:
-        if s in lookup:
-            last = lookup[s]
-        result.append(last)
-    return result
 
 
 # ---------------------------------------------------------------------------
@@ -187,97 +114,71 @@ def log_lora_efficiency(model, cfg: dict) -> None:
     logger.info(f"LoRA: {trainable:,} trainable / {total:,} total ({pct:.2f}%)")
 
 
-# ---------------------------------------------------------------------------
-# Training callback
-# ---------------------------------------------------------------------------
-
-
-class WandbLossCallback(TrainerCallback):
+def save_loss_plot(log_history: list, output_dir: str, run: Any = None) -> None:
     """
-    Handles all W&B metric logging during training.
-    Receives the Run object explicitly so it never depends on wandb.run global.
+    Parses the Hugging Face Trainer's internal log history to plot Train vs Val loss
+    and saves it as a PNG file, completely bypassing API timeouts.
     """
+    logger.info("Generating Training vs Validation Loss plot...")
 
-    def __init__(self, run: Any):
-        self._run = run
-        self._train_steps: List[int] = []
-        self._train_losses: List[float] = []
-        self._eval_steps: List[int] = []
-        self._eval_losses: List[float] = []
+    train_epochs, train_losses = [], []
+    eval_epochs, eval_losses = [], []
 
-    def on_log(self, args, state, control, logs=None, **kwargs):
-        if self._run is None or logs is None:
-            return control
+    # Parse the Trainer's memory
+    for log in log_history:
+        if "loss" in log and "epoch" in log:
+            train_epochs.append(log["epoch"])
+            train_losses.append(log["loss"])
+        if "eval_loss" in log and "epoch" in log:
+            eval_epochs.append(log["epoch"])
+            eval_losses.append(log["eval_loss"])
 
-        payload: dict = {"train/global_step": state.global_step}
+    if not train_losses or not eval_losses:
+        logger.warning("Not enough data to plot Train vs Val loss. Skipping plot.")
+        return
 
-        if "loss" in logs:
-            payload["loss/train"] = float(logs["loss"])
-            self._train_steps.append(state.global_step)
-            self._train_losses.append(float(logs["loss"]))
+    # Build the plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(
+        train_epochs,
+        train_losses,
+        label="Train Loss",
+        color="steelblue",
+        alpha=0.8,
+        linewidth=2,
+    )
+    plt.plot(
+        eval_epochs,
+        eval_losses,
+        label="Validation Loss",
+        color="darkorange",
+        linewidth=2.5,
+        marker="o",
+        markersize=6,
+    )
 
-        if "eval_loss" in logs:
-            payload["loss/eval"] = float(logs["eval_loss"])
-            self._eval_steps.append(state.global_step)
-            self._eval_losses.append(float(logs["eval_loss"]))
+    plt.title("Training vs. Validation Loss over Time", fontsize=14, fontweight="bold")
+    plt.xlabel("Epoch", fontsize=12)
+    plt.ylabel("Loss", fontsize=12)
+    plt.legend(fontsize=11)
+    plt.grid(True, linestyle="--", alpha=0.6)
+    plt.tight_layout()
 
-            try:
-                payload["metrics/perplexity"] = math.exp(
-                    min(float(logs["eval_loss"]), 20.0)
-                )
-            except (OverflowError, ValueError):
-                pass
+    # Save to your output directory
+    os.makedirs(output_dir, exist_ok=True)
+    save_path = os.path.join(output_dir, "loss_curve.png")
+    plt.savefig(save_path, dpi=300)
+    plt.close()
 
-            if self._train_losses and self._eval_losses:
-                all_steps = sorted(set(self._train_steps + self._eval_steps))
-                train_curve = _align_series(
-                    all_steps, self._train_steps, self._train_losses
-                )
-                eval_curve = _align_series(
-                    all_steps, self._eval_steps, self._eval_losses
-                )
+    logger.info(f"Saved loss plot to {save_path}")
 
-                payload["charts/loss"] = wandb.plot.line_series(
-                    xs=all_steps,
-                    ys=[train_curve, eval_curve],
-                    keys=["train", "eval"],
-                    title="Loss: train vs eval",
-                    xname="global_step",
-                )
-
-        if "grad_norm" in logs:
-            payload["metrics/grad_norm"] = float(logs["grad_norm"])
-
-        if "learning_rate" in logs:
-            payload["train/learning_rate"] = float(logs["learning_rate"])
-
+    # Optional: Send the finished image back to W&B as an artifact
+    active_run = run if run is not None else wandb.run
+    if active_run is not None:
         try:
-            self._run.log(payload)
+            active_run.log({"charts/final_loss_curve": wandb.Image(save_path)})
         except Exception as exc:
-            logger.warning(f"WandbLossCallback: failed to log — {exc}")
-
-        return control
-
-
-class WandbEvalPredictionCallback(TrainerCallback):
-    """Stub — mid-training generation skipped. See run_final_evaluation()."""
-
-    def __init__(
-        self,
-        tokenizer,
-        eval_dataset,
-        max_samples: int = 25,
-        output_dir: Optional[str] = None,
-        max_new_tokens: int = 20,
-    ):
-        self.tokenizer = tokenizer
-        self.eval_dataset = eval_dataset
-        self.max_samples = max_samples
-        self.output_dir = output_dir
-        self.max_new_tokens = max_new_tokens
-
-    def on_evaluate(self, args, state, control, model=None, **kwargs):
-        return control
+            logger.warning(f"Could not log image to W&B: {exc}")
 
 
 # ---------------------------------------------------------------------------
