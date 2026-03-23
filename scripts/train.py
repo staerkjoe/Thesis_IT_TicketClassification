@@ -9,6 +9,7 @@ import logging
 import os
 import pathlib
 import sys
+from typing import Any
 
 import unsloth  # noqa: F401 — must be first
 import yaml
@@ -16,7 +17,9 @@ from datasets import load_dataset
 from dotenv import load_dotenv
 from trl import SFTConfig, SFTTrainer
 
-import wandb
+import wandb as _wandb
+
+wandb: Any = _wandb
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -31,6 +34,7 @@ from utils.training.wandb_plots import (  # noqa: E402
     WandbLossCallback,
     log_dataset_overview,
     log_lora_efficiency,
+    run_final_evaluation,
 )
 
 logging.basicConfig(
@@ -87,7 +91,7 @@ def train(cfg: dict) -> None:
     model, tokenizer = load_model_for_training(cfg)
     dataset = load_data(cfg, tokenizer)
 
-    # Log LoRA efficiency summary and dataset overview once at start
+    # Log LoRA param breakdown and label distributions once at run start
     log_lora_efficiency(model, cfg)
     log_dataset_overview(dataset["train"], dataset["eval"])
 
@@ -122,16 +126,19 @@ def train(cfg: dict) -> None:
         seed=t["seed"],
         dataloader_num_workers=t["dataloader_num_workers"],
         dataset_text_field="formatted_text",
-        push_to_hub=True,
+        push_to_hub=False,  # we push manually below after evaluation
     )
 
+    # WandbEvalPredictionCallback is a no-op stub during training.
+    # Kept here so the config flag log_prediction_samples still works
+    # without breaking imports. Real predictions come from run_final_evaluation.
     callbacks = [WandbLossCallback()]
     if wb_cfg.get("log_prediction_samples", False):
         callbacks.append(
             WandbEvalPredictionCallback(
                 tokenizer=tokenizer,
                 eval_dataset=dataset["eval"],
-                max_samples=wb_cfg.get("prediction_sample_size", 50),
+                max_samples=wb_cfg.get("prediction_sample_size", 25),
                 output_dir=t["output_dir"],
             )
         )
@@ -150,7 +157,20 @@ def train(cfg: dict) -> None:
     trainer.train()
     logger.info("Training complete.")
 
-    if t.get("push_to_hub", True):
+    # -------------------------------------------------------------------------
+    # Post-training evaluation
+    # Run generate() on the full eval set now that training is done and the
+    # model is in a stable state. Produces predictions_final.csv and logs
+    # the prediction table, accuracy, macro F1, and confusion matrix to W&B.
+    # -------------------------------------------------------------------------
+    run_final_evaluation(
+        model=model,
+        tokenizer=tokenizer,
+        eval_dataset=dataset["eval"],
+        output_dir=t["output_dir"],
+    )
+
+    if t.get("push_to_hub", False):
         push_model_to_hub(model, tokenizer, cfg)
 
     wandb.finish()
