@@ -13,12 +13,13 @@ from typing import Any
 
 import torch
 import unsloth  # noqa: F401 — must be first
-import wandb as _wandb
 import yaml
 from datasets import load_dataset
 from dotenv import load_dotenv
 from transformers import TrainerCallback
 from trl import SFTConfig, SFTTrainer
+
+import wandb as _wandb
 
 wandb: Any = _wandb
 logger = logging.getLogger(__name__)
@@ -122,6 +123,7 @@ def load_data(cfg: dict, tokenizer, max_seq_length: int):
     dataset = load_dataset(
         "csv",
         data_files={"train": data_cfg["train_file"], "eval": data_cfg["eval_file"]},
+        sep=";",
     )
 
     # CHECK: Ensure 'text' (description) and 'label' (Reasoning+Tag) exist
@@ -217,7 +219,7 @@ def train(cfg: dict, run: Any) -> None:
     grad_accum = (
         overrides["gradient_accumulation_steps"] or t["gradient_accumulation_steps"]
     )
-    num_epochs = 2 if PIPELINE_TEST else t["num_train_epochs"]
+    num_epochs = 10 if PIPELINE_TEST else t["num_train_epochs"]
 
     steps_per_epoch = max(1, train_size // (batch_size * grad_accum))
     total_steps = max(1, steps_per_epoch * num_epochs)
