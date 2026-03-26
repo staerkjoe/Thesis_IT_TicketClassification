@@ -1,6 +1,3 @@
-# =============================================================================
-# utils/models/llm_handler.py
-# =============================================================================
 import logging
 import os
 from typing import Tuple
@@ -12,35 +9,36 @@ logger = logging.getLogger(__name__)
 
 
 def load_labels_config(path: str) -> dict:
-    """Load labels/prompt config from a YAML file (e.g. config/config_labels.yaml)."""
-    with open(path) as f:
+    """Load labels/prompt config from YAML (e.g. config/prompt_template_student.yaml)."""
+    with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
 def build_system_prompt(labels_cfg: dict) -> str:
     """
-    Build the system prompt from config_labels.yaml.
-    Fills the prompt_template with hierarchical_categories, scenarios, and
-    few_shot_examples, then strips the trailing 'Input Description:' line so
-    that part lives in the user turn instead.
+    Builds the pure zero-shot system prompt for distillation.
+    Only fills taxonomy and removes the few-shot logic entirely.
     """
     template = labels_cfg["prompt_template"]
 
+    # Format hierarchical_categories
     cat_str = "\n".join(
         f"({row[0]} {row[1]})" for row in labels_cfg["hierarchical_categories"]
     )
-    scen_str = "\n".join(labels_cfg["scenarios"])
-    examples = labels_cfg["few_shot_examples"]
 
-    # Fill everything except the description placeholder
+    # Format scenarios
+    scen_str = "\n".join(labels_cfg["scenarios"])
+
+    # Fill template: No examples_text anymore.
+    # We keep {description} as a sentinel so the .format() works and
+    # the rsplit logic below knows where to cut.
     filled = template.format(
         hierarchical_categories=cat_str,
         scenarios=scen_str,
-        examples_text=examples,
-        description="{description}",  # keep as sentinel so .format() doesn't fail
+        description="{description}",
     )
 
-    # The "Input Description: ..." line belongs in the user turn, not the system prompt
+    # Move 'Input Description:' part to the User turn
     system_part = filled.rsplit("Input Description:", 1)[0].rstrip()
     return system_part
 
@@ -61,16 +59,17 @@ def load_model_for_training(cfg: dict) -> Tuple:
     """Load quantized base model and attach QLoRA adapters."""
     m, lora_cfg = cfg["model"], cfg["lora"]
 
-    logger.info(f"Loading base model: {m['base_model_id']}")
+    logger.info(f"Loading Student Base Model: {m['base_model_id']}")
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=m["base_model_id"],
         max_seq_length=m["max_seq_length"],
         load_in_4bit=m["load_in_4bit"],
         token=os.environ.get("HF_TOKEN"),
     )
-    # ADD THIS — tell the tokenizer what its actual EOS token is
+
+    # Essential for Llama-3/Mistral to stop correctly
     tokenizer.eos_token = "<|eot_id|>"
-    tokenizer.pad_token = tokenizer.eos_token  # also good practice
+    tokenizer.pad_token = tokenizer.eos_token
 
     model = FastLanguageModel.get_peft_model(
         model,
@@ -113,6 +112,7 @@ def push_model_to_hub(model, tokenizer, cfg: dict) -> None:
     token = os.environ.get("HF_TOKEN")
     if not token:
         raise EnvironmentError("HF_TOKEN is not set.")
+
     logger.info(f"Pushing to Hub: {hub_id}")
     model.push_to_hub(hub_id, token=token)
     tokenizer.push_to_hub(hub_id, token=token)
