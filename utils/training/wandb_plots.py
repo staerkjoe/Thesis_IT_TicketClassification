@@ -5,11 +5,13 @@
 import logging
 import math
 import os
+import re
 from typing import Any, List, Optional
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
+import wandb as _wandb
 from sklearn.metrics import f1_score, precision_score, recall_score
 from transformers import (
     TrainerCallback,
@@ -17,8 +19,6 @@ from transformers import (
     TrainerState,
     TrainingArguments,
 )
-
-import wandb as _wandb
 
 wandb: Any = _wandb
 logger = logging.getLogger(__name__)
@@ -37,7 +37,22 @@ def _safe_to_pandas(dataset, columns: Optional[List[str]] = None) -> pd.DataFram
 
 
 def _extract_label(generated_text: str) -> str:
-    text = generated_text.strip()
+    """
+    Smarter extraction to pull the exact tag out of the new Distillation format
+    (Reasoning -> Tag -> Confidence).
+    """
+    text = str(generated_text).strip()
+
+    # Look for the 'Tag:' prefix and extract everything on that line
+    if "Tag:" in text:
+        try:
+            match = re.search(r"Tag:\s*(.*)", text, re.IGNORECASE)
+            if match:
+                return match.group(1).splitlines()[0].strip()
+        except Exception:
+            pass
+
+    # Fallback to legacy behavior if 'Tag:' is missing
     if "Output Tag:" in text:
         text = text.split("Output Tag:")[-1].strip()
     for line in text.splitlines():
@@ -61,7 +76,9 @@ def log_dataset_overview(train_dataset, eval_dataset) -> None:
     eval_df = _safe_to_pandas(eval_dataset, ["text", "label"])
 
     def _label_counts(df: pd.DataFrame) -> pd.DataFrame:
-        counts = df["label"].value_counts(dropna=False).reset_index()
+        # Extract just the tag so the distribution plot isn't distorted by unique reasoning
+        df["clean_tag"] = df["label"].apply(_extract_label)
+        counts = df["clean_tag"].value_counts(dropna=False).reset_index()
         counts.columns = ["label", "count"]
         return counts
 
@@ -119,34 +136,10 @@ def log_lora_efficiency(model, cfg: dict) -> None:
 
 # ---------------------------------------------------------------------------
 # PerplexityAndLossCallback
-#
-# DESIGN — why this is simpler than before:
-#
-# Problem with the previous version:
-#   It logged charts/train_loss and charts/eval_loss alongside the trainer's
-#   native train/loss and eval/loss. W&B saw four series on two different
-#   step axes and split them into separate plots.
-#
-# Fix:
-#   Only log ONE new metric from this callback: eval/perplexity.
-#   Train loss and eval loss are already logged correctly by the SFTTrainer's
-#   native W&B integration — we don't touch them.
-#   The combined train+val loss chart is produced offline by save_loss_plot()
-#   which reads trainer.state.log_history directly and saves a PNG/W&B image.
-#   This avoids the step-axis mismatch entirely.
 # ---------------------------------------------------------------------------
 
 
 class PerplexityAndLossCallback(TrainerCallback):
-    """
-    Logs eval/perplexity at every evaluation step.
-    Derived from eval_loss — zero extra forward passes, zero VRAM cost.
-
-    Does NOT re-log train_loss or eval_loss — the trainer's native W&B
-    integration handles those. Re-logging them here caused the duplicate
-    split-plot issue because they landed on different step axes.
-    """
-
     def on_log(
         self,
         args: TrainingArguments,
@@ -161,8 +154,6 @@ class PerplexityAndLossCallback(TrainerCallback):
         eval_loss = logs["eval_loss"]
         perplexity = min(math.exp(eval_loss), 1e4)
 
-        # Log perplexity using the trainer's own global_step so it lines up
-        # perfectly with eval/loss in W&B's native charts.
         wandb.log({"eval/perplexity": perplexity}, step=state.global_step)
 
         logger.info(
@@ -172,25 +163,11 @@ class PerplexityAndLossCallback(TrainerCallback):
 
 
 # ---------------------------------------------------------------------------
-# MidTrainingEvalCallback — unchanged, only runs on A100
+# MidTrainingEvalCallback
 # ---------------------------------------------------------------------------
 
 
 class MidTrainingEvalCallback(TrainerCallback):
-    """
-    Runs greedy decoding on a small fixed sample of the eval set at every
-    eval checkpoint to give a label-level exact-match signal during training.
-
-    Disabled on T4 (GPU_TIER="t4") via train.py — running inference on top
-    of a full training context causes OOM on 16 GB VRAM.
-    Enabled on A100 (GPU_TIER="a100") with sample_size=50.
-
-    Logs:
-      eval/mid_exact_match  — fraction of labels predicted exactly
-      eval/mid_macro_f1     — macro F1 over predicted vs gold labels
-    (kept under eval/ prefix so they appear in the same W&B section)
-    """
-
     def __init__(self, model, tokenizer, eval_dataset, sample_size: int = 50) -> None:
         self.model = model
         self.tokenizer = tokenizer
@@ -215,9 +192,11 @@ class MidTrainingEvalCallback(TrainerCallback):
 
         self.model.eval()
         for row in self.sample:
-            gold_label = str(row["label"]).strip()
+            gold_full = str(row["label"]).strip()
+            gold_tag = _extract_label(gold_full)
+
             formatted_text = row["formatted_text"]
-            inference_prompt = formatted_text.rsplit(gold_label, 1)[0].rstrip()
+            inference_prompt = formatted_text.rsplit(gold_full, 1)[0].rstrip()
 
             inputs = self.tokenizer(
                 inference_prompt, return_tensors="pt", truncation=True
@@ -227,7 +206,7 @@ class MidTrainingEvalCallback(TrainerCallback):
             with torch.no_grad():
                 outputs = self.model.generate(
                     **inputs,
-                    max_new_tokens=20,
+                    max_new_tokens=250,  # Increased to handle the reasoning chain
                     do_sample=False,
                     repetition_penalty=1.1,
                     pad_token_id=self.tokenizer.pad_token_id,
@@ -237,12 +216,11 @@ class MidTrainingEvalCallback(TrainerCallback):
             new_tokens = outputs[0][inputs["input_ids"].shape[1] :]
             raw = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
             preds.append(_extract_label(raw))
-            golds.append(gold_label)
+            golds.append(gold_tag)
 
         exact_match = sum(p == g for p, g in zip(preds, golds)) / len(golds)
         macro_f1 = f1_score(golds, preds, average="macro", zero_division=0)
 
-        # Use same step as trainer so these align with eval/loss in W&B
         wandb.log(
             {"eval/mid_exact_match": exact_match, "eval/mid_macro_f1": macro_f1},
             step=step,
@@ -256,23 +234,10 @@ class MidTrainingEvalCallback(TrainerCallback):
 
 # ---------------------------------------------------------------------------
 # save_loss_plot
-#
-# This is the combined train+val loss chart. It reads trainer.state.log_history
-# directly after training ends — no W&B step axis involved, so no mismatch.
-# Saved as a high-res PNG for the thesis AND uploaded to W&B as an image artifact.
 # ---------------------------------------------------------------------------
 
 
 def save_loss_plot(log_history: list, output_dir: str, run: Any = None) -> None:
-    """
-    Produces the definitive combined train vs validation loss figure.
-
-    Why we do this from log_history rather than W&B metrics:
-    - log_history is the raw source of truth from the trainer.
-    - Both train and eval loss are indexed by epoch so they align naturally
-      on the x-axis without any step-counter mismatch.
-    - The resulting PNG is thesis-quality (300 DPI) and also uploaded to W&B.
-    """
     logger.info("Generating combined Train vs Validation Loss plot...")
 
     train_epochs, train_losses = [], []
@@ -310,8 +275,6 @@ def save_loss_plot(log_history: list, output_dir: str, run: Any = None) -> None:
         markersize=6,
     )
 
-    # Secondary y-axis: perplexity derived from val loss.
-    # Useful in the thesis because it's more interpretable to a non-ML audience.
     ax2 = ax1.twinx()
     eval_perplexities = [min(math.exp(loss), 1e4) for loss in eval_losses]
     ax2.plot(
@@ -353,7 +316,7 @@ def save_loss_plot(log_history: list, output_dir: str, run: Any = None) -> None:
 
 
 # ---------------------------------------------------------------------------
-# run_final_evaluation — unchanged API, logs under eval/ prefix for consistency
+# run_final_evaluation
 # ---------------------------------------------------------------------------
 
 
@@ -364,19 +327,6 @@ def run_final_evaluation(
     output_dir: str,
     run: Any = None,
 ) -> None:
-    """
-    Full greedy-decoding eval on the entire eval set after training.
-
-    Always saves predictions_final.csv to output_dir.
-    Logs to W&B under eval/ prefix so all evaluation metrics appear in
-    the same W&B section:
-      eval/final_accuracy
-      eval/final_macro_f1
-      eval/final_macro_precision
-      eval/final_macro_recall
-      eval/confusion_matrix
-      eval/predictions_table
-    """
     logger.info("Running post-training evaluation on full eval set...")
 
     try:
@@ -394,9 +344,11 @@ def run_final_evaluation(
     rows: List[dict] = []
 
     for row in eval_dataset:
-        gold_label = str(row["label"]).strip()
+        gold_full = str(row["label"]).strip()
+        gold_tag = _extract_label(gold_full)
+
         formatted_text = row["formatted_text"]
-        inference_prompt = formatted_text.rsplit(gold_label, 1)[0].rstrip()
+        inference_prompt = formatted_text.rsplit(gold_full, 1)[0].rstrip()
 
         inputs = tokenizer(inference_prompt, return_tensors="pt", truncation=True)
         inputs = {k: v.to(device) for k, v in inputs.items()}
@@ -404,7 +356,7 @@ def run_final_evaluation(
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=20,
+                max_new_tokens=250,  # Increased to handle the reasoning chain
                 do_sample=False,
                 repetition_penalty=1.1,
                 pad_token_id=tokenizer.pad_token_id,
@@ -413,14 +365,15 @@ def run_final_evaluation(
 
         new_tokens = outputs[0][inputs["input_ids"].shape[1] :]
         raw_output = tokenizer.decode(new_tokens, skip_special_tokens=True)
-        pred_label = _extract_label(raw_output)
+        pred_tag = _extract_label(raw_output)
 
         rows.append(
             {
                 "text": row["text"],
-                "predicted_label": pred_label,
-                "true_label": gold_label,
-                "correct": pred_label == gold_label,
+                "predicted_label": pred_tag,
+                "true_label": gold_tag,
+                "full_output": raw_output,  # Keep the raw output so you can inspect the model's logic
+                "correct": pred_tag == gold_tag,
             }
         )
 
