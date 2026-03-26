@@ -84,4 +84,4 @@ prompt_template: |
   6. Additionally provide a confidence score (a score between 0 and 1). The score should represent how sure you are about the classification
 
   Input Description: {description}
-  Output Tag:
+  Output:
