@@ -1,0 +1,87 @@
+# config_distillation.yaml
+# Identical to teacher config but optimized for zero-shot SFT
+
+hierarchical_categories:
+  - ["1a MV Mobile voice,", "2a Main product"]
+  - ["1a MV Mobile voice,", "2a Smartwatch"]
+  - ["1a MV Mobile voice,", "2a Datasharingcard"]
+  - ["1a MV Mobile voice,", "2a Nummerportering"]
+  - ["1b MBB", "2b Main product"]
+  - ["1b MBB", "2b Datasharingcard"]
+  - ["1b MBB", "2b Router"]
+  - ["1b MBB", "2b Smart-sim"]
+  - ["1c TV", "2c COAX"]
+  - ["1c TV", "2c Fiber"]
+  - ["1c TV", "2c DSL"]
+  - ["1c TV", "2c OTT"]
+  - ["1d Broadband", "2d COAX"]
+  - ["1d Broadband", "2d Fiber"]
+  - ["1d Broadband", "2d DSL"]
+  - ["1e VoIP", "2e COAX"]
+  - ["1e VoIP", "2e Fiber"]
+  - ["1e VoIP", "2e DSL"]
+  - ["1e VoIP", "2e Fastnet på mobil"]
+  - ["1f PSTN", "2f Main product"]
+  - ["1f PSTN", "2f Add-on"]
+  - ["1g Self service", "2g Mit YouSee"]
+  - ["1g Self service", "2g YouSee Music"]
+  - ["1g Self service", "2g Mit Internet"]
+  - ["1g Self service", "2g YS-play"]
+  - ["1g Self service", "2g Webmail"]
+  - ["1 Misc incidents", "2 Other"]
+
+scenarios:
+  - "3 App"
+  - "3 Barring"
+  - "3 Billing/Invoices"
+  - "3 Change ownership"
+  - "3 Click & Collect"
+  - "3 CPR issues in Dawn"
+  - "3 Credit check"
+  - "3 CSRD"
+  - "3 Fraud"
+  - "3 Login issues"
+  - "3 Missing rights to access"
+  - "3 Mix-tv"
+  - "3 product status"
+  - "3 relocate"
+  - "3 onsite technician"
+  - "3 line technician"
+  - "3 Port in"
+  - "3 Port out"
+  - "3 payment method"
+  - "3 technical issues"
+  - "3 Order activation"
+  - "3 Order confirmation"
+  - "3 Performance issues"
+  - "3 Power of attorney"
+  - "3 Price and campaigns"
+  - "3 Proof of purchase"
+  - "3 Quote error"
+  - "3 Return/replace"
+  - "3 Shipment"
+  - "3 Sikkerhedspakke"
+  - "3 Stock"
+  - "3 Termination"
+  - "3 Third party"
+  - "3 Tickets"
+  - "3 User error"
+  - "3 Web"
+
+prompt_template: |
+  You are an expert in Nuuday telecommunication service classfication, top notch at categorizing Service Now for different brands such as YouSee, Telmore, Eesy, and Hiper customer tickets with super high accuracy.
+  Your task is to categorize service descriptions into the correct hierarchical category.
+
+  Available categories: {hierarchical_categories}
+  available scenarios: {scenarios}
+
+  Rules:
+  1. Return EXACTLY the format: (Category, Subcategory), Scenarios
+  2. Provide the most appropriate combination of category and subcategory and scenarios based on the description
+  3. If you're unsure or if the description doesn't fit any category, return: (1 Misc incidents, 2 Other), Scenarios
+  4. Be consistent and accurate in your classifications
+  5. Explain your reasoning for each combination of the classification briefly.
+  6. Additionally provide a confidence score (a score between 0 and 1). The score should represent how sure you are about the classification
+
+  Input Description: {description}
+  Output Tag:

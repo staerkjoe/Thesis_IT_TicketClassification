@@ -49,7 +49,9 @@ class AutoTaggerServiceNow:
 
         if config_path is None:
             config_path = str(
-                Path(__file__).parent.parent.parent / "config" / "config_labels.yaml"
+                Path(__file__).parent.parent.parent
+                / "config"
+                / "prompt_template_teacher.yaml"
             )
 
         with open(config_path, "r") as f:
