@@ -44,12 +44,23 @@ def build_system_prompt(labels_cfg: dict) -> str:
 
 
 def format_prompt(text: str, label: str, tokenizer, labels_cfg: dict) -> str:
-    """Format a single (text, label) pair into a full chat-template string."""
-    messages = [
-        {"role": "system", "content": build_system_prompt(labels_cfg)},
-        {"role": "user", "content": f"Input Description: {text}\nOutput Tag:"},
-        {"role": "assistant", "content": label},
-    ]
+    system_content = build_system_prompt(labels_cfg)
+    user_content = f"Input Description: {text}\nOutput Tag:"
+
+    # Mistral chat template does not support system role — merge into user turn
+    model_type = getattr(tokenizer, "name_or_path", "").lower()
+    if "mistral" in model_type or "ministral" in model_type:
+        messages = [
+            {"role": "user", "content": f"{system_content}\n\n{user_content}"},
+            {"role": "assistant", "content": label},
+        ]
+    else:
+        messages = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": user_content},
+            {"role": "assistant", "content": label},
+        ]
+
     return tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=False
     )
@@ -67,8 +78,14 @@ def load_model_for_training(cfg: dict) -> Tuple:
         token=os.environ.get("HF_TOKEN"),
     )
 
-    # Essential for Llama-3/Mistral to stop correctly
-    tokenizer.eos_token = "<|eot_id|>"
+    # Replace the hardcoded line with this:
+    eos_token = m.get("eos_token")
+    if not eos_token:
+        raise ValueError(
+            f"'eos_token' missing from model config for {m['base_model_id']}. "
+            "Add it to your model-specific yaml."
+        )
+    tokenizer.eos_token = eos_token
     tokenizer.pad_token = tokenizer.eos_token
 
     model = FastLanguageModel.get_peft_model(
@@ -92,7 +109,6 @@ def load_model_for_training(cfg: dict) -> Tuple:
 
 
 def load_model_for_inference(cfg: dict) -> Tuple:
-    """Load fine-tuned model from Hub for fast inference."""
     m = cfg["model"]
     logger.info(f"Loading model from Hub: {m['hub_model_id']}")
 
@@ -102,6 +118,17 @@ def load_model_for_inference(cfg: dict) -> Tuple:
         load_in_4bit=m["load_in_4bit"],
         token=os.environ.get("HF_TOKEN"),
     )
+
+    # ADD THIS — same as load_model_for_training
+    eos_token = m.get("eos_token")
+    if not eos_token:
+        raise ValueError(
+            f"'eos_token' missing from model config for {m['hub_model_id']}. "
+            "Add it to your model-specific yaml."
+        )
+    tokenizer.eos_token = eos_token
+    tokenizer.pad_token = tokenizer.eos_token
+
     FastLanguageModel.for_inference(model)
     return model, tokenizer
 
