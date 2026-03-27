@@ -1,0 +1,50 @@
+# =============================================================================
+# Shared across ALL models
+# =============================================================================
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.0
+  bias: "none"
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+  use_gradient_checkpointing: true
+
+training:
+  output_dir: "./outputs/checkpoints"
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 2
+  learning_rate: 2.0e-4
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.05
+  num_train_epochs: 3
+  bf16: false
+  fp16: true
+  logging_steps: 5
+  eval_strategy: "steps"
+  eval_steps: 5
+  save_strategy: "steps"
+  save_steps: 250
+  save_total_limit: 1
+  push_to_hub: false
+  seed: 42
+  dataloader_num_workers: 4
+
+wandb:
+  project: "thesis-it-ticket-classification"
+  tags:
+    - "qlora"
+  log_prediction_samples: true
+  prediction_sample_size: 20
+
+data:
+  train_file: "data/train/train.csv"
+  eval_file: "data/train/eval.csv"
+  labels_config: "config/prompt_template_student.yaml"

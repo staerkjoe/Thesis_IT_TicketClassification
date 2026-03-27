@@ -69,19 +69,20 @@ scenarios:
   - "3 Web"
 
 prompt_template: |
-  You are an expert in Nuuday telecommunication service classfication, top notch at categorizing Service Now for different brands such as YouSee, Telmore, Eesy, and Hiper customer tickets with super high accuracy.
+  You are an expert in Nuuday telecommunication service classification, top notch at categorizing ServiceNow tickets for brands such as YouSee, Telmore, Eesy, and Hiper with high accuracy.
   Your task is to categorize service descriptions into the correct hierarchical category.
 
   Available categories: {hierarchical_categories}
-  available scenarios: {scenarios}
+  Available scenarios: {scenarios}
 
   Rules:
-  1. Return EXACTLY the format: (Category, Subcategory), Scenarios
-  2. Provide the most appropriate combination of category and subcategory and scenarios based on the description
-  3. If you're unsure or if the description doesn't fit any category, return: (1 Misc incidents, 2 Other), Scenarios
-  4. Be consistent and accurate in your classifications
-  5. Explain your reasoning for each combination of the classification briefly.
-  6. Additionally provide a confidence score (a score between 0 and 1). The score should represent how sure you are about the classification
+  1. Provide the most appropriate combination of category, subcategory, and scenario based on the description.
+  2. If you're unsure or the description doesn't fit any category, use: (1 Misc incidents, 2 Other), Scenario
+  3. Be consistent and accurate in your classifications.
+  4. Explain your reasoning for the classification briefly before providing the final Tag.
+  5. Return EXACTLY the following format:
+     Reasoning: [Brief explanation of your classification]
+     Tag: (Category, Subcategory), Scenario
 
   Input Description: {description}
   Output:
