@@ -11,6 +11,8 @@ from typing import Any, List, Optional
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
+import torch.nn.functional as F
+import wandb as _wandb
 from sklearn.metrics import f1_score, precision_score, recall_score
 from transformers import (
     TrainerCallback,
@@ -330,7 +332,7 @@ def run_final_evaluation(
     output_dir: str,
     run: Any = None,
 ) -> None:
-    logger.info("Running post-training evaluation on full eval set...")
+    logger.info("Running post-training evaluation on full eval set with Logprobs...")
 
     try:
         from unsloth import FastLanguageModel
@@ -350,6 +352,9 @@ def run_final_evaluation(
         gold_full = str(row["label"]).strip()
         gold_tag = _extract_label(gold_full)
 
+        # 1. Grab the Teacher's S* score from the CSV row
+        teacher_s_star = float(row.get("s_star", 0.0))
+
         formatted_text = row["formatted_text"]
         inference_prompt = formatted_text.rsplit(gold_full, 1)[0].rstrip()
 
@@ -359,24 +364,45 @@ def run_final_evaluation(
         with torch.no_grad():
             outputs = model.generate(
                 **inputs,
-                max_new_tokens=250,  # Increased to handle the reasoning chain
+                max_new_tokens=250,
                 do_sample=False,
                 repetition_penalty=1.1,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
+                # 2. TURN ON THE BRAIN SCANNER
+                output_scores=True,
+                return_dict_in_generate=True,
             )
 
-        new_tokens = outputs[0][inputs["input_ids"].shape[1] :]
-        raw_output = tokenizer.decode(new_tokens, skip_special_tokens=True)
+        # 3. EXTRACT TOKENS AND CALCULATE MATH CONFIDENCE
+        generated_sequence = outputs.sequences[0][inputs["input_ids"].shape[1] :]
+        raw_output = tokenizer.decode(generated_sequence, skip_special_tokens=True)
         pred_tag = _extract_label(raw_output)
+
+        # Calculate Logprobs for the generated tokens
+        log_probs = []
+        for step, token_id in enumerate(generated_sequence):
+            # Convert raw logits to log-probabilities using Softmax
+            step_log_probs = F.log_softmax(outputs.scores[step][0], dim=-1)
+            # Get the exact log-probability of the token the model actually chose
+            token_log_prob = step_log_probs[token_id].item()
+            log_probs.append(token_log_prob)
+
+        # Average the logprobs over the generated response
+        mean_logprob = sum(log_probs) / len(log_probs) if log_probs else 0.0
+        # Convert mathematical logprob back to a human-readable percentage (0.0 to 1.0)
+        student_confidence = math.exp(mean_logprob)
 
         rows.append(
             {
                 "text": row["text"],
                 "predicted_label": pred_tag,
                 "true_label": gold_tag,
-                "full_output": raw_output,  # Keep the raw output so you can inspect the model's logic
                 "correct": pred_tag == gold_tag,
+                "student_confidence": round(student_confidence, 4),  # New!
+                "teacher_s_star": round(teacher_s_star, 4),  # New!
+                "mean_logprob": round(mean_logprob, 4),  # New!
+                "full_output": raw_output,
             }
         )
 
@@ -386,6 +412,8 @@ def run_final_evaluation(
     csv_path = os.path.join(output_dir, "predictions_final.csv")
     pred_df.to_csv(csv_path, index=False)
     logger.info(f"Saved predictions -> {csv_path}")
+
+    # ... [Keep the rest of your logging logic (Accuracy, F1, etc) exactly the same] ...
 
     true_labels = pred_df["true_label"].tolist()
     pred_labels = pred_df["predicted_label"].tolist()

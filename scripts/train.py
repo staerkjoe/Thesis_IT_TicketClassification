@@ -4,6 +4,7 @@
 # =============================================================================
 
 import argparse
+import copy
 import logging
 import os
 import pathlib
@@ -110,9 +111,27 @@ class FinalEvalWandbCallback(TrainerCallback):
         )
 
 
-def load_config(path: str) -> dict:
-    with open(path) as f:
-        return yaml.safe_load(f)
+def load_config(override_path: str) -> dict:
+    """Deep-merge base config with model-specific override."""
+    base_path = os.path.join(os.path.dirname(override_path), "model_config_base.yaml")
+
+    with open(base_path) as f:
+        base = yaml.safe_load(f)
+    with open(override_path) as f:
+        override = yaml.safe_load(f)
+
+    return _deep_merge(base, override)
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge override into base. Override wins on conflict."""
+    result = copy.deepcopy(base)
+    for key, val in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(val, dict):
+            result[key] = _deep_merge(result[key], val)
+        else:
+            result[key] = val
+    return result
 
 
 def load_data(cfg: dict, tokenizer, max_seq_length: int):
@@ -211,15 +230,22 @@ def train(cfg: dict, run: Any) -> None:
     train_size = len(dataset["train"])
 
     batch_size = (
-        overrides["per_device_train_batch_size"] or t["per_device_train_batch_size"]
+        t["per_device_train_batch_size"]
+        if overrides["per_device_train_batch_size"] is None
+        else overrides["per_device_train_batch_size"]
     )
     eval_batch_size = (
-        overrides["per_device_eval_batch_size"] or t["per_device_eval_batch_size"]
+        t["per_device_eval_batch_size"]
+        if overrides["per_device_eval_batch_size"] is None
+        else overrides["per_device_eval_batch_size"]
     )
     grad_accum = (
-        overrides["gradient_accumulation_steps"] or t["gradient_accumulation_steps"]
+        t["gradient_accumulation_steps"]
+        if overrides["gradient_accumulation_steps"] is None
+        else overrides["gradient_accumulation_steps"]
     )
-    num_epochs = 10 if PIPELINE_TEST else t["num_train_epochs"]
+
+    num_epochs = 2 if PIPELINE_TEST else t["num_train_epochs"]
 
     steps_per_epoch = max(1, train_size // (batch_size * grad_accum))
     total_steps = max(1, steps_per_epoch * num_epochs)
