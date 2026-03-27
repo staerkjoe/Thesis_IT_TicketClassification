@@ -21,6 +21,8 @@ from transformers import (
     TrainingArguments,
 )
 
+import wandb as _wandb
+
 wandb: Any = _wandb
 logger = logging.getLogger(__name__)
 
@@ -155,7 +157,11 @@ class PerplexityAndLossCallback(TrainerCallback):
         eval_loss = logs["eval_loss"]
         perplexity = min(math.exp(eval_loss), 1e4)
 
-        wandb.log({"eval/perplexity": perplexity}, step=state.global_step)
+        # Do NOT pass step= here — the HuggingFace Trainer controls the W&B
+        # step counter internally and has already advanced it past global_step
+        # by the time on_log fires. Passing an explicit step causes the
+        # "steps must be monotonically increasing" warning and the log is dropped.
+        wandb.log({"eval/perplexity": perplexity})
 
         logger.info(
             f"Step {state.global_step} | "
@@ -222,10 +228,8 @@ class MidTrainingEvalCallback(TrainerCallback):
         exact_match = sum(p == g for p, g in zip(preds, golds)) / len(golds)
         macro_f1 = f1_score(golds, preds, average="macro", zero_division=0)
 
-        wandb.log(
-            {"eval/mid_exact_match": exact_match, "eval/mid_macro_f1": macro_f1},
-            step=step,
-        )
+        # Same reason as PerplexityAndLossCallback — no explicit step=
+        wandb.log({"eval/mid_exact_match": exact_match, "eval/mid_macro_f1": macro_f1})
 
         logger.info(
             f"Step {step} mid-eval | "

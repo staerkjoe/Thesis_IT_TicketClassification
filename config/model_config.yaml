@@ -40,13 +40,13 @@ training:
   save_strategy: "steps"
   save_steps: 250 #
   save_total_limit: 1 #
-  push_to_hub: false #
+  push_to_hub: true #
   seed: 42
   dataloader_num_workers: 4
 
 wandb:
   project: "thesis-it-ticket-classification"
-  run_name: "4"
+  run_name: "5"
   tags:
     - "qlora"
     - "llama-3.1"
@@ -57,4 +57,4 @@ wandb:
 data:
   train_file: "data/train/train.csv"
   eval_file: "data/train/eval.csv"
-  labels_config: "config/config_labels.yaml"
+  labels_config: "config/prompt_template_student.yaml"

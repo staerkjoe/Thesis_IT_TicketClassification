@@ -12,6 +12,7 @@
 import argparse
 import logging
 import pathlib
+import re
 import sys
 import warnings
 
@@ -34,6 +35,8 @@ from utils.training.llm_handler import (  # noqa: E402
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 )
+# FIX: Suppress the buggy transformers AttentionMask deprecation warning
+logging.getLogger("transformers.modeling_attn_mask_utils").setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 
@@ -53,17 +56,21 @@ def build_inference_prompt(ticket_text: str, tokenizer, labels_cfg: dict) -> str
     )
 
 
-def extract_label(text: str) -> str:
+def extract_tag(full_output: str) -> str:
     """
-    Take only the first non-empty line of model output.
-    The model is trained to output just the label — anything after
-    the first line is rambling that we discard.
+    Pull just the 'Tag: ...' line from the full reasoning output.
+    Falls back to the first non-empty line if no Tag: prefix is found.
     """
-    for line in text.strip().splitlines():
+    text = full_output.strip()
+    match = re.search(r"Tag:\s*(.*)", text, re.IGNORECASE)
+    if match:
+        return match.group(1).splitlines()[0].strip()
+    # Fallback: return first non-empty line
+    for line in text.splitlines():
         line = line.strip()
         if line:
             return line
-    return text.strip()
+    return text
 
 
 def classify(
@@ -71,9 +78,14 @@ def classify(
     tokenizer,
     ticket_text: str,
     labels_cfg: dict,
-    max_new_tokens: int = 20,  # labels are short — 20 is plenty
+    max_new_tokens: int = 250,  # matches training — reasoning chain needs room
     stream: bool = True,
-) -> str:
+) -> dict:
+    """
+    Returns a dict with:
+      - 'full_output': complete model response (Reasoning + Tag + Confidence)
+      - 'tag':         just the extracted Tag line, for downstream use
+    """
     prompt = build_inference_prompt(ticket_text, tokenizer, labels_cfg)
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     streamer = (
@@ -89,12 +101,14 @@ def classify(
         do_sample=False,
         repetition_penalty=1.1,
         pad_token_id=tokenizer.eos_token_id,
-        eos_token_id=tokenizer.eos_token_id,  # stops at EOS — prevents rambling
+        eos_token_id=tokenizer.eos_token_id,
     )
 
     generated = outputs[0][inputs["input_ids"].shape[1] :]
-    raw = tokenizer.decode(generated, skip_special_tokens=True)
-    return extract_label(raw)
+    full_output = tokenizer.decode(generated, skip_special_tokens=True).strip()
+    tag = extract_tag(full_output)
+
+    return {"full_output": full_output, "tag": tag}
 
 
 if __name__ == "__main__":
@@ -103,14 +117,12 @@ if __name__ == "__main__":
     parser.add_argument("--config", default="config/model_config.yaml")
     parser.add_argument(
         "--ticket",
-        default="description: Support - TV/Video on demand/Streamer or Audio Customer experiences that his "
-        "programs lag on the streamer. Category:TV/Video on demand/Streamer or Audio contentProvider:Everything on "
-        "YouSee Play pathFromCIP:- issue:Video/picture - Other issues related to the video timeCodeError:00:00 "
-        "contentTitle:Everything on YouSee Play TV-Video On Demand (VOD) â€“ Validation, "
-        "Reasoning: The customer reports lag while streaming content via YouSee Play on a streamer device, which "
-        "aligns with OTT TV service and is a performance-related issue (video playback lag). "
-        "Reasoning_Confidence: 0.92 Label_Confidence: 0.90, scientific_confidence: 0.8195, max_path_confidence: 0.9, "
-        "consistency: 0.8",
+        default="Support - My YouSee/Web (PC/Mac)/Missing content (e.g. Bills) "
+        "missing pay now button, and Customer is logged in with my ID. "
+        "Please look into why the 'Pay now' button is not there, should be "
+        "possible for the kd to pay via Mit Yousee "
+        "Customer is using iPhone and Samsung tablet and he has tried both "
+        "the app and the web, Customer uses the right username",
     )
     parser.add_argument("--no-stream", action="store_true")
     args = parser.parse_args()
@@ -122,7 +134,7 @@ if __name__ == "__main__":
     print(f"\nTicket : {args.ticket}")
     print(f"{'─' * 60}")
 
-    predicted = classify(
+    result = classify(
         model,
         tokenizer,
         args.ticket,
@@ -131,4 +143,6 @@ if __name__ == "__main__":
     )
 
     print(f"{'─' * 60}")
-    print(f"Predicted label: {predicted}\n")
+    print(f"Full output:\n{result['full_output']}")
+    print(f"{'─' * 60}")
+    print(f"Extracted tag: {result['tag']}\n")
