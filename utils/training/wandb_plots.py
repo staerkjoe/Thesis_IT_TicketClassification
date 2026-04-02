@@ -11,7 +11,6 @@ from typing import Any, List, Optional
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
-import torch.nn.functional as F
 import wandb as _wandb
 from sklearn.metrics import f1_score, precision_score, recall_score
 from transformers import (
@@ -20,8 +19,6 @@ from transformers import (
     TrainerState,
     TrainingArguments,
 )
-
-import wandb as _wandb
 
 wandb: Any = _wandb
 logger = logging.getLogger(__name__)
@@ -41,12 +38,12 @@ def _safe_to_pandas(dataset, columns: Optional[List[str]] = None) -> pd.DataFram
 
 def _extract_label(generated_text: str) -> str:
     """
-    Smarter extraction to pull the exact tag out of the new Distillation format
-    (Reasoning -> Tag -> Confidence).
+    Extract the Tag from the student's full output.
+    Handles the distillation format: Reasoning: ... \\n Tag: ...
+    Falls back to the first non-empty line if no Tag: prefix is found.
     """
     text = str(generated_text).strip()
 
-    # Look for the 'Tag:' prefix and extract everything on that line
     if "Tag:" in text:
         try:
             match = re.search(r"Tag:\s*(.*)", text, re.IGNORECASE)
@@ -55,7 +52,7 @@ def _extract_label(generated_text: str) -> str:
         except Exception:
             pass
 
-    # Fallback to legacy behavior if 'Tag:' is missing
+    # Fallback: legacy format where the tag was the first line after "Output Tag:"
     if "Output Tag:" in text:
         text = text.split("Output Tag:")[-1].strip()
     for line in text.splitlines():
@@ -65,12 +62,33 @@ def _extract_label(generated_text: str) -> str:
     return text
 
 
+def _parse_hierarchical(tag: str) -> tuple:
+    """
+    Split a full tag string into its three taxonomy levels.
+
+    Example:
+        '(1g Self service, 2g Mit YouSee), 3 Login issues'
+        -> ('1g Self service', '2g Mit YouSee', '3 Login issues')
+
+    Falls back to the full tag string at all three levels if parsing fails,
+    so that hierarchical accuracy degrades gracefully for malformed outputs.
+    """
+    match = re.match(r"\(([^,]+),\s*([^)]+)\),\s*(.+)", tag.strip())
+    if match:
+        return match.group(1).strip(), match.group(2).strip(), match.group(3).strip()
+    return tag, tag, tag
+
+
 # ---------------------------------------------------------------------------
 # One-shot logging at run start
 # ---------------------------------------------------------------------------
 
 
 def log_dataset_overview(train_dataset, eval_dataset) -> None:
+    """
+    Log train/eval label distributions and dataset sizes to W&B at run start.
+    Called once from train.py before training begins.
+    """
     if wandb.run is None:
         logger.warning("W&B not initialised — skipping dataset overview.")
         return
@@ -79,7 +97,8 @@ def log_dataset_overview(train_dataset, eval_dataset) -> None:
     eval_df = _safe_to_pandas(eval_dataset, ["text", "label"])
 
     def _label_counts(df: pd.DataFrame) -> pd.DataFrame:
-        # Extract just the tag so the distribution plot isn't distorted by unique reasoning
+        # Extract just the tag so the distribution is not distorted by unique reasoning
+        df = df.copy()
         df["clean_tag"] = df["label"].apply(_extract_label)
         counts = df["clean_tag"].value_counts(dropna=False).reset_index()
         counts.columns = ["label", "count"]
@@ -106,6 +125,10 @@ def log_dataset_overview(train_dataset, eval_dataset) -> None:
 
 
 def log_lora_efficiency(model, cfg: dict) -> None:
+    """
+    Log the LoRA adapter size (trainable vs frozen parameters) to W&B.
+    Called once from train.py after the model is loaded.
+    """
     if wandb.run is None:
         logger.warning("W&B not initialised — skipping LoRA efficiency log.")
         return
@@ -143,6 +166,17 @@ def log_lora_efficiency(model, cfg: dict) -> None:
 
 
 class PerplexityAndLossCallback(TrainerCallback):
+    """
+    Fires on every eval step. Reads eval_loss from the Trainer logs and
+    derives perplexity, then logs it to W&B.
+
+    Why no explicit step= in wandb.log():
+    The HuggingFace Trainer controls the W&B step counter internally and has
+    already advanced it past global_step by the time on_log fires. Passing an
+    explicit step causes a "steps must be monotonically increasing" warning and
+    the log entry is silently dropped.
+    """
+
     def on_log(
         self,
         args: TrainingArguments,
@@ -157,10 +191,6 @@ class PerplexityAndLossCallback(TrainerCallback):
         eval_loss = logs["eval_loss"]
         perplexity = min(math.exp(eval_loss), 1e4)
 
-        # Do NOT pass step= here — the HuggingFace Trainer controls the W&B
-        # step counter internally and has already advanced it past global_step
-        # by the time on_log fires. Passing an explicit step causes the
-        # "steps must be monotonically increasing" warning and the log is dropped.
         wandb.log({"eval/perplexity": perplexity})
 
         logger.info(
@@ -175,6 +205,15 @@ class PerplexityAndLossCallback(TrainerCallback):
 
 
 class MidTrainingEvalCallback(TrainerCallback):
+    """
+    A100-only callback. On every eval step, runs generation on a small sample
+    of the eval set and logs exact match and macro F1 to W&B.
+
+    This is lightweight (sample_size=50 by default) and gives a mid-training
+    signal of classification quality without waiting until the end of training.
+    Only enabled when GPU_TIER == 'a100' in train.py.
+    """
+
     def __init__(self, model, tokenizer, eval_dataset, sample_size: int = 50) -> None:
         self.model = model
         self.tokenizer = tokenizer
@@ -213,7 +252,7 @@ class MidTrainingEvalCallback(TrainerCallback):
             with torch.no_grad():
                 outputs = self.model.generate(
                     **inputs,
-                    max_new_tokens=250,  # Increased to handle the reasoning chain
+                    max_new_tokens=250,
                     do_sample=False,
                     repetition_penalty=1.1,
                     pad_token_id=self.tokenizer.pad_token_id,
@@ -228,7 +267,7 @@ class MidTrainingEvalCallback(TrainerCallback):
         exact_match = sum(p == g for p, g in zip(preds, golds)) / len(golds)
         macro_f1 = f1_score(golds, preds, average="macro", zero_division=0)
 
-        # Same reason as PerplexityAndLossCallback — no explicit step=
+        # No explicit step= for the same reason as PerplexityAndLossCallback
         wandb.log({"eval/mid_exact_match": exact_match, "eval/mid_macro_f1": macro_f1})
 
         logger.info(
@@ -243,6 +282,11 @@ class MidTrainingEvalCallback(TrainerCallback):
 
 
 def save_loss_plot(log_history: list, output_dir: str, run: Any = None) -> None:
+    """
+    Generate and save a train vs validation loss curve at the end of training.
+    Perplexity is overlaid on a secondary y-axis.
+    Called from train.py after trainer.train() completes.
+    """
     logger.info("Generating combined Train vs Validation Loss plot...")
 
     train_epochs, train_losses = [], []
@@ -321,6 +365,43 @@ def save_loss_plot(log_history: list, output_dir: str, run: Any = None) -> None:
 
 
 # ---------------------------------------------------------------------------
+# FinalEvalWandbCallback
+# ---------------------------------------------------------------------------
+
+
+class FinalEvalWandbCallback(TrainerCallback):
+    """
+    Fires once after training ends via on_train_end.
+
+    At this point load_best_model_at_end=True has already restored the
+    best checkpoint into memory, so run_final_evaluation sees the best
+    weights, not the final-step weights.
+
+    This is the bridge between the Trainer lifecycle and the post-training
+    classification evaluation. All evaluation logic lives in run_final_evaluation.
+    """
+
+    def __init__(self, model, tokenizer, eval_dataset, output_dir, run):
+        self.model = model
+        self.tokenizer = tokenizer
+        self.eval_dataset = eval_dataset
+        self.output_dir = output_dir
+        self.run = run
+
+    def on_train_end(self, args, state, control, **kwargs):
+        import torch
+
+        torch.cuda.empty_cache()
+        run_final_evaluation(
+            model=self.model,
+            tokenizer=self.tokenizer,
+            eval_dataset=self.eval_dataset,
+            output_dir=self.output_dir,
+            run=self.run,
+        )
+
+
+# ---------------------------------------------------------------------------
 # run_final_evaluation
 # ---------------------------------------------------------------------------
 
@@ -332,7 +413,37 @@ def run_final_evaluation(
     output_dir: str,
     run: Any = None,
 ) -> None:
-    logger.info("Running post-training evaluation on full eval set with Logprobs...")
+    """
+    Post-training evaluation on the full silver eval set.
+
+    Runs once immediately after training ends (triggered by FinalEvalWandbCallback),
+    while the best checkpoint is still loaded in memory. This measures distillation
+    fidelity — how well the student reproduces the teacher's Tag assignments on
+    held-out silver data.
+
+    Note: true labels here are silver (machine-generated, S* >= 0.75), not gold.
+    Results measure student-teacher agreement, not ground-truth accuracy.
+    Ground-truth accuracy is measured separately in scripts/evaluate_gold.py.
+
+    Metrics logged to W&B:
+        eval/final_accuracy          — exact tag match rate vs silver labels
+        eval/final_macro_f1          — macro-averaged F1 across all tag classes
+        eval/final_macro_precision   — macro-averaged precision
+        eval/final_macro_recall      — macro-averaged recall
+        eval/accuracy_level1         — was the Level 1 category correct?
+        eval/accuracy_level2         — was the Level 2 sub-category correct?
+        eval/accuracy_level3         — was the Level 3 scenario correct?
+        eval/format_compliance_rate  — fraction of outputs with Reasoning: + Tag:
+        eval/fallback_rate           — fraction of predictions using Misc fallback
+        eval/predictions_table       — full per-ticket predictions table
+        eval/confusion_matrix        — confusion matrix over predicted vs true tags
+
+    Saved to disk:
+        outputs/checkpoints/predictions_final.csv
+        Columns: text | predicted_label | true_label | correct |
+                 full_output | format_compliant | is_fallback
+    """
+    logger.info("Running post-training evaluation on silver eval set...")
 
     try:
         from unsloth import FastLanguageModel
@@ -352,10 +463,8 @@ def run_final_evaluation(
         gold_full = str(row["label"]).strip()
         gold_tag = _extract_label(gold_full)
 
-        # 1. Grab the Teacher's S* score from the CSV row
-        teacher_s_star = float(row.get("s_star", 0.0))
-
         formatted_text = row["formatted_text"]
+        # Strip the assistant turn to get the bare inference prompt
         inference_prompt = formatted_text.rsplit(gold_full, 1)[0].rstrip()
 
         inputs = tokenizer(inference_prompt, return_tensors="pt", truncation=True)
@@ -369,29 +478,11 @@ def run_final_evaluation(
                 repetition_penalty=1.1,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
-                # 2. TURN ON THE BRAIN SCANNER
-                output_scores=True,
-                return_dict_in_generate=True,
             )
 
-        # 3. EXTRACT TOKENS AND CALCULATE MATH CONFIDENCE
-        generated_sequence = outputs.sequences[0][inputs["input_ids"].shape[1] :]
+        generated_sequence = outputs[0][inputs["input_ids"].shape[1] :]
         raw_output = tokenizer.decode(generated_sequence, skip_special_tokens=True)
         pred_tag = _extract_label(raw_output)
-
-        # Calculate Logprobs for the generated tokens
-        log_probs = []
-        for step, token_id in enumerate(generated_sequence):
-            # Convert raw logits to log-probabilities using Softmax
-            step_log_probs = F.log_softmax(outputs.scores[step][0], dim=-1)
-            # Get the exact log-probability of the token the model actually chose
-            token_log_prob = step_log_probs[token_id].item()
-            log_probs.append(token_log_prob)
-
-        # Average the logprobs over the generated response
-        mean_logprob = sum(log_probs) / len(log_probs) if log_probs else 0.0
-        # Convert mathematical logprob back to a human-readable percentage (0.0 to 1.0)
-        student_confidence = math.exp(mean_logprob)
 
         rows.append(
             {
@@ -399,10 +490,11 @@ def run_final_evaluation(
                 "predicted_label": pred_tag,
                 "true_label": gold_tag,
                 "correct": pred_tag == gold_tag,
-                "student_confidence": round(student_confidence, 4),  # New!
-                "teacher_s_star": round(teacher_s_star, 4),  # New!
-                "mean_logprob": round(mean_logprob, 4),  # New!
                 "full_output": raw_output,
+                "format_compliant": (
+                    "Reasoning:" in raw_output and "Tag:" in raw_output
+                ),
+                "is_fallback": "1 Misc incidents" in pred_tag,
             }
         )
 
@@ -413,8 +505,7 @@ def run_final_evaluation(
     pred_df.to_csv(csv_path, index=False)
     logger.info(f"Saved predictions -> {csv_path}")
 
-    # ... [Keep the rest of your logging logic (Accuracy, F1, etc) exactly the same] ...
-
+    # --- Classification metrics ---
     true_labels = pred_df["true_label"].tolist()
     pred_labels = pred_df["predicted_label"].tolist()
 
@@ -427,9 +518,29 @@ def run_final_evaluation(
         true_labels, pred_labels, average="macro", zero_division=0
     )
 
+    # --- Hierarchical accuracy ---
+    pred_levels = pd.DataFrame(
+        pred_df["predicted_label"].apply(_parse_hierarchical).tolist(),
+        columns=["pred_l1", "pred_l2", "pred_l3"],
+    )
+    true_levels = pd.DataFrame(
+        pred_df["true_label"].apply(_parse_hierarchical).tolist(),
+        columns=["true_l1", "true_l2", "true_l3"],
+    )
+    acc_l1 = (pred_levels["pred_l1"] == true_levels["true_l1"]).mean()
+    acc_l2 = (pred_levels["pred_l2"] == true_levels["true_l2"]).mean()
+    acc_l3 = (pred_levels["pred_l3"] == true_levels["true_l3"]).mean()
+
+    # --- Format and fallback diagnostics ---
+    format_compliance = pred_df["format_compliant"].mean()
+    fallback_rate = pred_df["is_fallback"].mean()
+
     logger.info(
         f"Final eval | accuracy={accuracy:.3f} | macro_f1={macro_f1:.3f} | "
-        f"precision={macro_precision:.3f} | recall={macro_recall:.3f}"
+        f"precision={macro_precision:.3f} | recall={macro_recall:.3f} | "
+        f"L1={acc_l1:.3f} | L2={acc_l2:.3f} | L3={acc_l3:.3f} | "
+        f"format_compliance={format_compliance:.3f} | "
+        f"fallback_rate={fallback_rate:.3f}"
     )
 
     active_run = run if run is not None else wandb.run
@@ -445,14 +556,24 @@ def run_final_evaluation(
                 "eval/final_macro_f1": macro_f1,
                 "eval/final_macro_precision": macro_precision,
                 "eval/final_macro_recall": macro_recall,
+                "eval/accuracy_level1": acc_l1,
+                "eval/accuracy_level2": acc_l2,
+                "eval/accuracy_level3": acc_l3,
+                "eval/format_compliance_rate": format_compliance,
+                "eval/fallback_rate": fallback_rate,
             }
         )
         active_run.summary["eval/final_accuracy"] = accuracy
         active_run.summary["eval/final_macro_f1"] = macro_f1
         active_run.summary["eval/final_macro_precision"] = macro_precision
         active_run.summary["eval/final_macro_recall"] = macro_recall
+        active_run.summary["eval/accuracy_level1"] = acc_l1
+        active_run.summary["eval/accuracy_level2"] = acc_l2
+        active_run.summary["eval/accuracy_level3"] = acc_l3
+        active_run.summary["eval/format_compliance_rate"] = format_compliance
+        active_run.summary["eval/fallback_rate"] = fallback_rate
     except Exception as exc:
-        logger.warning(f"Could not log prediction table to W&B: {exc}")
+        logger.warning(f"Could not log metrics to W&B: {exc}")
 
     try:
         active_run.log(
@@ -465,6 +586,6 @@ def run_final_evaluation(
             }
         )
     except Exception as exc:
-        logger.warning(f"Could not log confusion matrix: {exc}")
+        logger.warning(f"Could not log confusion matrix to W&B: {exc}")
 
     logger.info("Post-training evaluation complete.")
