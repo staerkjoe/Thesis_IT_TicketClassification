@@ -1,0 +1,24 @@
+# =============================================================================
+# config/pipeline_test_config.yaml
+#
+# Overrides applied on top of the base config when PIPELINE_TEST = True.
+# Purpose: verify the full training pipeline end-to-end on a tiny dataset
+# without burning GPU budget. All values here are chosen for speed, not quality.
+# =============================================================================
+
+training:
+  num_train_epochs: 2
+  max_seq_length: 512         # fits on T4 VRAM
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 8
+  logging_steps: 3
+  eval_steps: 12              # once per epoch with 100 train samples
+  save_steps: 12
+  save_total_limit: 2
+  bf16: false
+  fp16: true
+
+data:
+  train_file: "data/train/train_test.csv"   # 100-row test slice
+  eval_file: "data/train/eval_test.csv"     # 20-row test slice
