@@ -40,7 +40,7 @@ training:
   save_strategy: "steps"
   save_steps: 250 #
   save_total_limit: 1 #
-  push_to_hub: true #
+  push_to_hub: false #
   seed: 42
   dataloader_num_workers: 4
 
