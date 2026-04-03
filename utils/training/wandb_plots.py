@@ -11,7 +11,6 @@ from typing import Any, List, Optional
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
-import wandb as _wandb
 from sklearn.metrics import f1_score, precision_score, recall_score
 from transformers import (
     TrainerCallback,
@@ -19,6 +18,8 @@ from transformers import (
     TrainerState,
     TrainingArguments,
 )
+
+import wandb as _wandb
 
 wandb: Any = _wandb
 logger = logging.getLogger(__name__)
@@ -177,21 +178,21 @@ class PerplexityAndLossCallback(TrainerCallback):
     the log entry is silently dropped.
     """
 
-    def on_log(
-        self,
-        args: TrainingArguments,
-        state: TrainerState,
-        control: TrainerControl,
-        logs: Optional[dict] = None,
-        **kwargs: Any,
-    ) -> None:
+    def on_log(self, args, state, control, logs=None, **kwargs):
         if logs is None or "eval_loss" not in logs:
             return
 
         eval_loss = logs["eval_loss"]
         perplexity = min(math.exp(eval_loss), 1e4)
 
-        wandb.log({"eval/perplexity": perplexity})
+        # Log both together — do NOT call wandb.log() separately
+        # as it creates a new step and causes the Trainer's eval/loss to be dropped
+        wandb.log(
+            {
+                "eval/perplexity": perplexity,
+                "eval/loss": eval_loss,
+            }
+        )
 
         logger.info(
             f"Step {state.global_step} | "
