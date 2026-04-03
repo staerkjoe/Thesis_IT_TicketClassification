@@ -20,5 +20,5 @@ training:
   fp16: true
 
 data:
-  train_file: "data/train/train_test.csv"   # 100-row test slice
-  eval_file: "data/train/eval_test.csv"     # 20-row test slice
+  train_file: "data/train/train.csv"   # 100-row test slice
+  eval_file: "data/train/eval.csv"     # 20-row test slice
