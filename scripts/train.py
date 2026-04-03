@@ -27,11 +27,12 @@ from typing import Any
 
 import torch
 import unsloth  # noqa: F401 — must be imported before transformers
-import wandb as _wandb
 import yaml
 from datasets import load_dataset
 from dotenv import load_dotenv
 from trl import SFTConfig, SFTTrainer
+
+import wandb as _wandb
 
 wandb: Any = _wandb
 
@@ -162,6 +163,7 @@ def load_data(cfg: dict, tokenizer):
             "eval": data_cfg["eval_file"],
         },
         sep=";",
+        encoding="latin-1",
     )
 
     for split in ("train", "eval"):
