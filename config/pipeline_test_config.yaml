@@ -18,6 +18,7 @@ training:
   save_total_limit: 2
   bf16: false
   fp16: true
+  push_to_hub: false          # safety guard — never push from a pipeline test
 
 data:
   train_file: "/home/azureuser/cloudfiles/code/Users/alsei/Thesis_IT_TicketClassification/data/train/pipeline_test_train.csv"   # 100-row test slice
