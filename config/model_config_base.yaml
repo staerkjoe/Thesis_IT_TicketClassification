@@ -18,22 +18,30 @@ lora:
 
 training:
   output_dir: "./outputs/checkpoints"
-  per_device_train_batch_size: 2
-  per_device_eval_batch_size: 2
-  gradient_accumulation_steps: 2
+  # A100 production batch — effective batch = 4 × 4 = 16
+  # (~1,038 steps/epoch on 16,615 train samples, 90/10 split)
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 4
   learning_rate: 2.0e-4
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.05
   num_train_epochs: 3
-  bf16: false
-  fp16: true
-  logging_steps: 5
+  # A100 — bf16 is faster and uses less VRAM than fp16
+  # pipeline_test_config.yaml overrides these back to fp16 for T4
+  bf16: true
+  fp16: false
+  # ~every 5% of an epoch (50 steps @ ~1,038 steps/epoch)
+  logging_steps: 50
   eval_strategy: "steps"
-  eval_steps: 5
+  # ~4× per epoch — good early-stopping resolution
+  eval_steps: 250
   save_strategy: "steps"
+  # aligned with eval_steps — required for load_best_model_at_end
   save_steps: 250
-  save_total_limit: 1
-  push_to_hub: false
+  # best + one prior checkpoint as safety net
+  save_total_limit: 2
+  push_to_hub: true
   seed: 42
   dataloader_num_workers: 4
 
@@ -41,6 +49,8 @@ wandb:
   project: "thesis-it-ticket-classification"
   tags:
     - "qlora"
+    - "distillation"
+    - "silver-labels"
   log_prediction_samples: true
   prediction_sample_size: 20
 
