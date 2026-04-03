@@ -267,13 +267,21 @@ class MidTrainingEvalCallback(TrainerCallback):
 
         exact_match = sum(p == g for p, g in zip(preds, golds)) / len(golds)
         macro_f1 = f1_score(golds, preds, average="macro", zero_division=0)
+        weighted_f1 = f1_score(golds, preds, average="weighted", zero_division=0)
 
         # No explicit step= for the same reason as PerplexityAndLossCallback
-        wandb.log({"eval/mid_exact_match": exact_match, "eval/mid_macro_f1": macro_f1})
+        wandb.log(
+            {
+                "eval/mid_exact_match": exact_match,
+                "eval/mid_macro_f1": macro_f1,
+                "eval/mid_weighted_f1": weighted_f1,
+            }
+        )
 
         logger.info(
             f"Step {step} mid-eval | "
-            f"exact_match={exact_match:.3f} | macro_f1={macro_f1:.3f}"
+            f"exact_match={exact_match:.3f} | macro_f1={macro_f1:.3f} | "
+            f"weighted_f1={weighted_f1:.3f}"
         )
 
 
@@ -428,7 +436,9 @@ def run_final_evaluation(
 
     Metrics logged to W&B:
         eval/final_accuracy          — exact tag match rate vs silver labels
-        eval/final_macro_f1          — macro-averaged F1 across all tag classes
+        eval/final_macro_f1          — macro-averaged F1 across all tag classes (all classes equal weight)
+        eval/final_weighted_f1       — support-weighted F1 (weight by class frequency; operationally honest
+          for high-volume triage)
         eval/final_macro_precision   — macro-averaged precision
         eval/final_macro_recall      — macro-averaged recall
         eval/accuracy_level1         — was the Level 1 category correct?
@@ -512,6 +522,9 @@ def run_final_evaluation(
 
     accuracy = pred_df["correct"].mean()
     macro_f1 = f1_score(true_labels, pred_labels, average="macro", zero_division=0)
+    weighted_f1 = f1_score(
+        true_labels, pred_labels, average="weighted", zero_division=0
+    )
     macro_precision = precision_score(
         true_labels, pred_labels, average="macro", zero_division=0
     )
@@ -538,6 +551,7 @@ def run_final_evaluation(
 
     logger.info(
         f"Final eval | accuracy={accuracy:.3f} | macro_f1={macro_f1:.3f} | "
+        f"weighted_f1={weighted_f1:.3f} | "
         f"precision={macro_precision:.3f} | recall={macro_recall:.3f} | "
         f"L1={acc_l1:.3f} | L2={acc_l2:.3f} | L3={acc_l3:.3f} | "
         f"format_compliance={format_compliance:.3f} | "
@@ -555,6 +569,7 @@ def run_final_evaluation(
                 "eval/predictions_table": wandb.Table(dataframe=pred_df),
                 "eval/final_accuracy": accuracy,
                 "eval/final_macro_f1": macro_f1,
+                "eval/final_weighted_f1": weighted_f1,
                 "eval/final_macro_precision": macro_precision,
                 "eval/final_macro_recall": macro_recall,
                 "eval/accuracy_level1": acc_l1,
@@ -566,6 +581,7 @@ def run_final_evaluation(
         )
         active_run.summary["eval/final_accuracy"] = accuracy
         active_run.summary["eval/final_macro_f1"] = macro_f1
+        active_run.summary["eval/final_weighted_f1"] = weighted_f1
         active_run.summary["eval/final_macro_precision"] = macro_precision
         active_run.summary["eval/final_macro_recall"] = macro_recall
         active_run.summary["eval/accuracy_level1"] = acc_l1
