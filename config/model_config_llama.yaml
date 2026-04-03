@@ -9,7 +9,9 @@ model:
   eos_token: "<|eot_id|>"
 
 wandb:
-  run_name: "llama-3.1-8b"
+  run_name: "llama-3.1-8b-3ep-18k"
   tags:
     - "qlora"
     - "llama-3.1"
+    - "a100"
+    - "18k"
