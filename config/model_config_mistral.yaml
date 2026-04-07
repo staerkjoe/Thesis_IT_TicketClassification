@@ -9,7 +9,9 @@ model:
   eos_token: "</s>"
 
 wandb:
-  run_name: "ministral-8b"
+  run_name: "ministral-8b-3ep-18k"
   tags:
     - "qlora"
     - "mistral"
+    - "a100"
+    - "18k"
