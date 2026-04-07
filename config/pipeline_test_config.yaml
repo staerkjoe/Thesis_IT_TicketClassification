@@ -6,9 +6,11 @@
 # without burning GPU budget. All values here are chosen for speed, not quality.
 # =============================================================================
 
+model:
+  max_seq_length: 1024        # A100 has headroom; 512 was the T4 limit
+
 training:
   num_train_epochs: 2
-  max_seq_length: 512         # fits on T4 VRAM
   per_device_train_batch_size: 1
   per_device_eval_batch_size: 1
   gradient_accumulation_steps: 8
@@ -16,9 +18,8 @@ training:
   eval_steps: 12              # once per epoch with 100 train samples
   save_steps: 12
   save_total_limit: 2
-  bf16: false
-  fp16: true
-  push_to_hub: false          # safety guard — never push from a pipeline test
+  bf16: true
+  fp16: false
 
 data:
   train_file: "/home/azureuser/cloudfiles/code/Users/alsei/Thesis_IT_TicketClassification/data/train/pipeline_test_train.csv"   # 100-row test slice
