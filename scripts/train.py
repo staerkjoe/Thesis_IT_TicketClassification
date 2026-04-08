@@ -69,7 +69,7 @@ logging.getLogger("transformers.modeling_attn_mask_utils").setLevel(logging.ERRO
 # =============================================================================
 # THE ONLY TWO LINES YOU EVER CHANGE
 # =============================================================================
-PIPELINE_TEST = True
+PIPELINE_TEST = False
 GPU_TIER = "a100"  # "t4" for pipeline test | "a100" for real run
 
 
@@ -162,7 +162,7 @@ def load_data(cfg: dict, tokenizer):
             "train": data_cfg["train_file"],
             "eval": data_cfg["eval_file"],
         },
-        sep=";",
+        sep=data_cfg.get("sep", ","),
         encoding="latin-1",
     )
 
