@@ -8,6 +8,9 @@ model:
   load_in_4bit: true
   eos_token: "</s>"
 
+lora:
+  use_gradient_checkpointing: false
+
 wandb:
   run_name: "ministral-8b-3ep-18k"
   tags:

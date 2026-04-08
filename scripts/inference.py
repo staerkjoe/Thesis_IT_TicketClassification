@@ -46,11 +46,24 @@ def load_config(path: str) -> dict:
 
 
 def build_inference_prompt(ticket_text: str, tokenizer, labels_cfg: dict) -> str:
-    """Build prompt without the assistant turn — model generates that part."""
-    messages = [
-        {"role": "system", "content": build_system_prompt(labels_cfg)},
-        {"role": "user", "content": f"Input Description: {ticket_text}\nOutput Tag:"},
-    ]
+    """Build prompt without the assistant turn — model generates that part.
+
+    Mistral/Ministral models do not support a system role; the system content
+    is merged into the user turn instead (mirrors the training-time format_prompt
+    behaviour in llm_handler.py).
+    """
+    system_content = build_system_prompt(labels_cfg)
+    user_content = f"Input Description: {ticket_text}\nOutput Tag:"
+
+    model_type = getattr(tokenizer, "name_or_path", "").lower()
+    if "mistral" in model_type or "ministral" in model_type:
+        messages = [{"role": "user", "content": f"{system_content}\n\n{user_content}"}]
+    else:
+        messages = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": user_content},
+        ]
+
     return tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
     )
