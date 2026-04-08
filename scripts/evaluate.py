@@ -29,8 +29,7 @@
 #   poetry run python scripts/evaluate.py \
 #     --config config/model_config_llama.yaml \
 #     --dataset-type gold \
-#     --data-file data/gold/gold_standard.csv \
-#     --human-label-col human_label
+#     --data-file data/gold/gold_standard.csv
 #
 # THE TWO LINES YOU CHANGE BEFORE A RUN (same convention as train.py):
 #   PIPELINE_TEST = True/False
@@ -165,12 +164,8 @@ def load_eval_data(data_file: str, sep: str = ",") -> pd.DataFrame:
     """
     Load a CSV for evaluation.
 
-    Expected columns (minimum):
-        text    — the ticket description
-        label   — the teacher's full output (Reasoning: ... Tag: ... Label_Confidence: ...)
-
-    Optional columns:
-        human_label — expert-assigned tag (gold standard only)
+    silver/fresh columns: text | label (Reasoning: ... \\n Tag: ...) | s_star
+    gold columns        : text | label (bare human tag, no reasoning)
     """
     df = pd.read_csv(data_file, sep=sep, encoding="latin-1")
     missing = [c for c in ("text", "label") if c not in df.columns]
