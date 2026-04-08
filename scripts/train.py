@@ -162,7 +162,7 @@ def load_data(cfg: dict, tokenizer):
             "train": data_cfg["train_file"],
             "eval": data_cfg["eval_file"],
         },
-        sep=";",
+        sep=data_cfg.get("sep", ","),
         encoding="latin-1",
     )
 
