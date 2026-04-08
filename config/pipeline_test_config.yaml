@@ -25,3 +25,4 @@ data:
   sep: ";"
   train_file: "/home/azureuser/cloudfiles/code/Users/alsei/Thesis_IT_TicketClassification/data/train/pipeline_test_train.csv"   # 100-row test slice
   eval_file: "/home/azureuser/cloudfiles/code/Users/alsei/Thesis_IT_TicketClassification/data/train/pipeline_test_eval.csv"     # 20-row test slice
+  sep: ";"
