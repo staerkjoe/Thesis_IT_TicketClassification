@@ -55,6 +55,7 @@ wandb:
   prediction_sample_size: 20
 
 data:
-  train_file: "data/train/train.csv"
-  eval_file: "data/train/eval.csv"
+  sep: ","
+  train_file: "data/train/final_train_data.csv"
+  eval_file: "data/train/final_eval_data.csv"
   labels_config: "config/prompt_template_student.yaml"
