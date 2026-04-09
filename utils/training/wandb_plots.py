@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 from sklearn.metrics import f1_score, precision_score, recall_score
+from tqdm import tqdm
 from transformers import (
     TrainerCallback,
     TrainerControl,
@@ -421,6 +422,7 @@ def run_final_evaluation(
     eval_dataset,
     output_dir: str,
     run: Any = None,
+    batch_size: int = 1,
 ) -> None:
     """
     Post-training evaluation on the full silver eval set.
@@ -470,15 +472,31 @@ def run_final_evaluation(
     device = next(model.parameters()).device
     rows: List[dict] = []
 
-    for row in eval_dataset:
-        gold_full = str(row["label"]).strip()
-        gold_tag = _extract_label(gold_full)
+    # Collect all samples
+    all_texts = [str(row["text"]) for row in eval_dataset]
+    all_gold_fulls = [str(row["label"]).strip() for row in eval_dataset]
+    all_gold_tags = [_extract_label(g) for g in all_gold_fulls]
+    all_prompts = [
+        row["formatted_text"].rsplit(gold_full, 1)[0].rstrip()
+        for row, gold_full in zip(eval_dataset, all_gold_fulls)
+    ]
 
-        formatted_text = row["formatted_text"]
-        # Strip the assistant turn to get the bare inference prompt
-        inference_prompt = formatted_text.rsplit(gold_full, 1)[0].rstrip()
+    # Set pad token for batched generation
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
 
-        inputs = tokenizer(inference_prompt, return_tensors="pt", truncation=True)
+    for i in tqdm(range(0, len(all_prompts), batch_size), desc="Evaluating"):
+        batch_prompts = all_prompts[i : i + batch_size]
+        batch_texts = all_texts[i : i + batch_size]
+        batch_gold_tags = all_gold_tags[i : i + batch_size]
+
+        inputs = tokenizer(
+            batch_prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+        )
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
         with torch.no_grad():
@@ -491,23 +509,26 @@ def run_final_evaluation(
                 eos_token_id=tokenizer.eos_token_id,
             )
 
-        generated_sequence = outputs[0][inputs["input_ids"].shape[1] :]
-        raw_output = tokenizer.decode(generated_sequence, skip_special_tokens=True)
-        pred_tag = _extract_label(raw_output)
+        input_len = inputs["input_ids"].shape[1]
+        for j, output in enumerate(outputs):
+            generated_sequence = output[input_len:]
+            raw_output = tokenizer.decode(generated_sequence, skip_special_tokens=True)
+            pred_tag = _extract_label(raw_output)
+            gold_tag = batch_gold_tags[j]
 
-        rows.append(
-            {
-                "text": row["text"],
-                "predicted_label": pred_tag,
-                "true_label": gold_tag,
-                "correct": pred_tag == gold_tag,
-                "full_output": raw_output,
-                "format_compliant": (
-                    "Reasoning:" in raw_output and "Tag:" in raw_output
-                ),
-                "is_fallback": "1 Misc incidents" in pred_tag,
-            }
-        )
+            rows.append(
+                {
+                    "text": batch_texts[j],
+                    "predicted_label": pred_tag,
+                    "true_label": gold_tag,
+                    "correct": pred_tag == gold_tag,
+                    "full_output": raw_output,
+                    "format_compliant": (
+                        "Reasoning:" in raw_output and "Tag:" in raw_output
+                    ),
+                    "is_fallback": "1 Misc incidents" in pred_tag,
+                }
+            )
 
     pred_df = pd.DataFrame(rows)
 
