@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # =============================================================================
-# scripts/evaluate.py — Post-training evaluation pipeline
+# scripts/eval.py — Full evaluation pipeline (silver / fresh / gold)
 # =============================================================================
 #
-# Evaluates a fine-tuned distillation model against one of three dataset types
+# Evaluates any model (finetuned or vanilla) against one of three dataset types
 # and logs all metrics to a dedicated W&B eval run.
 #
 # CONFIG HIERARCHY (same as train.py):
@@ -13,23 +13,26 @@
 #
 # Example runs:
 #
-#   # Silver eval (held-out 20%)
-#   poetry run python scripts/evaluate.py \
-#     --config config/model_config_llama.yaml \
-#     --dataset-type silver \
-#     --data-file data/train/final_eval_data.csv
-#
-#   # Fresh unseen test set
-#   poetry run python scripts/evaluate.py \
+#   # Silver eval — finetuned Mistral
+#   TORCHDYNAMO_DISABLE=1 poetry run python scripts/eval.py \
 #     --config config/model_config_mistral.yaml \
-#     --dataset-type fresh \
-#     --data-file data/test/fresh_test_data.csv
+#     --dataset-type silver \
+#     --data-file data/train/final_eval_data.csv \
+#     --batch-size 16
+#
+#   # Silver eval — vanilla Llama baseline
+#   poetry run python scripts/eval.py \
+#     --config config/model_config_llama_vanilla.yaml \
+#     --dataset-type silver \
+#     --data-file data/train/final_eval_data.csv \
+#     --batch-size 16
 #
 #   # Gold standard (50 expert-labeled tickets)
-#   poetry run python scripts/evaluate.py \
-#     --config config/model_config_llama.yaml \
+#   TORCHDYNAMO_DISABLE=1 poetry run python scripts/eval.py \
+#     --config config/model_config_mistral.yaml \
 #     --dataset-type gold \
-#     --data-file data/gold/gold_standard.csv
+#     --data-file data/gold/gold_standard.csv \
+#     --batch-size 16
 #
 # THE TWO LINES YOU CHANGE BEFORE A RUN (same convention as train.py):
 #   PIPELINE_TEST = True/False
@@ -56,13 +59,13 @@ wandb: Any = _wandb
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+from utils.evaluation.wandb_eval import (  # noqa: E402
+    log_evaluation_to_wandb,
+    run_inference_batch,
+)
 from utils.training.llm_handler import (  # noqa: E402
     load_labels_config,
     load_model_for_inference,
-)
-from utils.training.wandb_eval import (  # noqa: E402
-    log_evaluation_to_wandb,
-    run_inference_batch,
 )
 
 # ---------------------------------------------------------------------------

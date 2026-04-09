@@ -2,7 +2,7 @@
 # Ministral 8B — only model-specific fields
 #
 # Eval run:
-#   TORCHDYNAMO_DISABLE=1 poetry run python scripts/evaluate.py \
+#   TORCHDYNAMO_DISABLE=1 poetry run python scripts/eval.py \
 #       --config config/model_config_mistral.yaml \
 #       --dataset-type silver \
 #       --data-file data/train/final_eval_data.csv \
