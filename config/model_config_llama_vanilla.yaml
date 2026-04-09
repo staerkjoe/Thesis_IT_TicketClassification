@@ -2,7 +2,7 @@
 # Llama 3.1 8B — vanilla (non-finetuned) baseline
 #
 # Run:
-#   poetry run python scripts/evaluate.py \
+#   poetry run python scripts/eval.py \
 #       --config config/model_config_llama_vanilla.yaml \
 #       --dataset-type silver \
 #       --data-file data/train/final_eval_data.csv \

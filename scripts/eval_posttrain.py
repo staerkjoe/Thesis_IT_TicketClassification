@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 # =============================================================================
-# scripts/eval_final.py — Post-training evaluation with batched inference
+# scripts/eval_posttrain.py — Post-training evaluation with batched inference
 #
 # Loads the best checkpoint, runs generation in batches on the full eval set,
 # and logs all metrics + confusion matrix to the existing W&B run.
+# Use this immediately after training to evaluate the best checkpoint.
 #
 # Run:
-#   TORCHDYNAMO_DISABLE=1 poetry run python scripts/eval_final.py \
+#   TORCHDYNAMO_DISABLE=1 poetry run python scripts/eval_posttrain.py \
 #       --config config/model_config_mistral.yaml \
 #       --checkpoint outputs/checkpoints/checkpoint-2000 \
 #       --wandb_run_id e5mnr5ty \
