@@ -495,8 +495,7 @@ def _compute_general_metrics(
     Compute calibration, Spearman correlation, and latency metrics.
 
     Calibration requires 'student_confidence' and 'correct' columns.
-    Spearman requires 'student_confidence' and teacher S* (Label_Confidence
-    extracted from 'label' column if available).
+    Spearman requires 'student_confidence' and the 's_star' column (silver/fresh only).
     """
     metrics: Dict[str, Any] = {}
 
