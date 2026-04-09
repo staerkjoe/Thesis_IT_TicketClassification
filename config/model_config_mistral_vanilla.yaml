@@ -1,16 +1,16 @@
 # =============================================================================
-# Ministral 8B — only model-specific fields
+# Ministral 8B — vanilla (non-finetuned) baseline
 #
-# Eval run:
+# Run:
 #   TORCHDYNAMO_DISABLE=1 poetry run python scripts/evaluate.py \
-#       --config config/model_config_mistral.yaml \
+#       --config config/model_config_mistral_vanilla.yaml \
 #       --dataset-type silver \
 #       --data-file data/train/final_eval_data.csv \
 #       --batch-size 16
 # =============================================================================
 model:
   base_model_id: "mistralai/Ministral-8B-Instruct-2410"
-  hub_model_id: "staerkjo/checkpoints-mistral"
+  hub_model_id: "mistralai/Ministral-8B-Instruct-2410"
   max_seq_length: 2048
   load_in_4bit: true
   eos_token: "</s>"
@@ -19,9 +19,8 @@ lora:
   use_gradient_checkpointing: false
 
 wandb:
-  run_name: "ministral-8b-3ep-18k"
+  run_name: "ministral-8b-vanilla"
   tags:
-    - "qlora"
+    - "vanilla"
     - "mistral"
-    - "a100"
-    - "18k"
+    - "baseline"
