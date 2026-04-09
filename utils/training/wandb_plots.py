@@ -375,6 +375,66 @@ def save_loss_plot(log_history: list, output_dir: str, run: Any = None) -> None:
 
 
 # ---------------------------------------------------------------------------
+# regenerate_loss_plot_from_wandb
+# ---------------------------------------------------------------------------
+
+
+def regenerate_loss_plot_from_wandb(run: Any, output_dir: str) -> None:
+    """
+    Fetch the training history from W&B and regenerate loss_curve.png.
+
+    Used when training was interrupted before save_loss_plot() could run
+    (e.g. the process was killed during FinalEvalWandbCallback). Pulls the
+    logged train/loss and eval/loss series from the W&B API and calls
+    save_loss_plot() with the reconstructed log_history.
+
+    The HuggingFace Trainer logs to W&B with keys:
+        train/loss, train/epoch   — one row per logging_steps interval
+        eval/loss,  eval/epoch    — one row per eval_steps interval
+    """
+    logger.info("Fetching training history from W&B to regenerate loss curve...")
+    try:
+        api = wandb.Api()
+        api_run = api.run(f"{run.entity}/{run.project}/{run.id}")
+        history = api_run.history(samples=10_000, pandas=True)
+    except Exception as exc:
+        logger.warning(f"Could not fetch W&B history: {exc}")
+        return
+
+    log_history = []
+
+    # Forward-fill train/epoch so that eval rows (which have NaN for train/epoch)
+    # inherit the epoch value from the most recent training step.
+    history = history.sort_values("_step").reset_index(drop=True)
+    if "train/epoch" in history.columns:
+        history["_epoch"] = history["train/epoch"].ffill()
+    else:
+        history["_epoch"] = history.get("epoch", 0)
+
+    # --- Training loss rows ---
+    if "train/loss" in history.columns:
+        train_rows = history[["train/loss", "_epoch"]].dropna()
+        for _, row in train_rows.iterrows():
+            log_history.append({"loss": row["train/loss"], "epoch": row["_epoch"]})
+
+    # --- Eval loss rows ---
+    if "eval/loss" in history.columns:
+        eval_rows = history[["eval/loss", "_epoch"]].dropna()
+        for _, row in eval_rows.iterrows():
+            log_history.append({"eval_loss": row["eval/loss"], "epoch": row["_epoch"]})
+
+    if not log_history:
+        logger.warning(
+            "W&B history did not contain expected train/loss or eval/loss columns — "
+            f"found: {list(history.columns)}. Skipping loss plot."
+        )
+        return
+
+    logger.info(f"Reconstructed {len(log_history)} log entries from W&B history.")
+    save_loss_plot(log_history, output_dir, run)
+
+
+# ---------------------------------------------------------------------------
 # FinalEvalWandbCallback
 # ---------------------------------------------------------------------------
 
