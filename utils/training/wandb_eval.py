@@ -37,6 +37,7 @@ import torch
 import torch.nn.functional as F
 from scipy import stats
 from sklearn.metrics import f1_score, precision_score, recall_score
+from tqdm import tqdm
 
 import wandb as _wandb
 
@@ -272,9 +273,14 @@ def run_inference_batch(
     df: pd.DataFrame,
     labels_cfg: dict,
     max_new_tokens: int = 250,
+    batch_size: int = 8,
 ) -> pd.DataFrame:
     """
-    Run inference on every row of df (must have a 'text' column).
+    Run batched inference on every row of df (must have a 'text' column).
+
+    Uses output_scores=True with batched generation. Per-ticket logprobs are
+    extracted by slicing result.scores[t][j] — so confidence is computed for
+    each ticket individually despite running in batches.
 
     Returns df with added columns:
         full_output       — raw model generation
@@ -283,43 +289,92 @@ def run_inference_batch(
         is_fallback       — bool: predicted tag is the Misc fallback
         tag_logprob       — mean log-prob over Tag tokens (nan if unavailable)
         student_confidence— exp(tag_logprob) clipped to [0, 1]; confidence proxy
-        latency_ms        — inference time per ticket
+        latency_ms        — wall-clock time for the batch, divided per ticket
     """
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
+
+    prompts = [
+        _build_inference_prompt(str(row.text), tokenizer, labels_cfg)
+        for row in df.itertuples(index=False)
+    ]
+
     rows = []
-    total = len(df)
-    logger.info(f"Running batch inference on {total} tickets...")
+    total = len(prompts)
+    logger.info(
+        f"Running batched inference on {total} tickets (batch_size={batch_size})..."
+    )
 
-    for i, row in enumerate(df.itertuples(index=False), 1):
-        ticket_text = str(row.text)
-        prompt = _build_inference_prompt(ticket_text, tokenizer, labels_cfg)
-        full_output, tag_logprob, latency_ms = _classify_single(
-            model, tokenizer, prompt, max_new_tokens=max_new_tokens
-        )
-        pred_tag = _extract_label(full_output)
-        confidence = (
-            math.exp(tag_logprob) if not math.isnan(tag_logprob) else float("nan")
-        )
+    for batch_start in tqdm(
+        range(0, total, batch_size), desc="Evaluating", unit="batch"
+    ):
+        batch_prompts = prompts[batch_start : batch_start + batch_size]
+        n = len(batch_prompts)
 
-        rows.append(
-            {
-                "full_output": full_output,
-                "predicted_label": pred_tag,
-                "format_compliant": (
-                    "Reasoning:" in full_output and "Tag:" in full_output
-                ),
-                "is_fallback": "1 Misc incidents" in pred_tag,
-                "tag_logprob": tag_logprob,
-                "student_confidence": (
-                    min(max(confidence, 0.0), 1.0)
-                    if not math.isnan(confidence)
-                    else float("nan")
-                ),
-                "latency_ms": latency_ms,
-            }
+        inputs = tokenizer(
+            batch_prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
         )
+        inputs = {k: v.to(model.device) for k, v in inputs.items()}
+        input_len = inputs["input_ids"].shape[1]
 
-        if i % 50 == 0 or i == total:
-            logger.info(f"  [{i}/{total}] last latency: {latency_ms:.0f} ms")
+        t0 = time.perf_counter()
+        with torch.no_grad():
+            result = model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+                repetition_penalty=1.1,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+                output_scores=True,
+                return_dict_in_generate=True,
+            )
+        batch_latency_ms = (time.perf_counter() - t0) * 1000.0
+        per_ticket_latency_ms = batch_latency_ms / n
+
+        for j in range(n):
+            generated_ids = result.sequences[j][input_len:]
+            full_output = tokenizer.decode(
+                generated_ids, skip_special_tokens=True
+            ).strip()
+
+            # Extract per-ticket scores by slicing the batch dimension
+            scores_j = tuple(
+                result.scores[t][j].unsqueeze(0) for t in range(len(result.scores))
+            )
+            tag_logprob = _compute_tag_logprob(scores_j, generated_ids, tokenizer)
+
+            pred_tag = _extract_label(full_output)
+            confidence = (
+                math.exp(tag_logprob) if not math.isnan(tag_logprob) else float("nan")
+            )
+
+            rows.append(
+                {
+                    "full_output": full_output,
+                    "predicted_label": pred_tag,
+                    "format_compliant": (
+                        "Reasoning:" in full_output and "Tag:" in full_output
+                    ),
+                    "is_fallback": "1 Misc incidents" in pred_tag,
+                    "tag_logprob": tag_logprob,
+                    "student_confidence": (
+                        min(max(confidence, 0.0), 1.0)
+                        if not math.isnan(confidence)
+                        else float("nan")
+                    ),
+                    "latency_ms": per_ticket_latency_ms,
+                }
+            )
+
+        done = min(batch_start + batch_size, total)
+        logger.info(
+            f"  [{done}/{total}] batch_latency={batch_latency_ms:.0f}ms | per_ticket={per_ticket_latency_ms:.0f}ms"
+        )
 
     result_df = df.copy().reset_index(drop=True)
     result_df = pd.concat([result_df, pd.DataFrame(rows)], axis=1)

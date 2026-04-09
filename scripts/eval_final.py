@@ -27,7 +27,10 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import wandb  # noqa: E402
 from utils.training.llm_handler import format_prompt, load_labels_config  # noqa: E402
-from utils.training.wandb_plots import run_final_evaluation  # noqa: E402
+from utils.training.wandb_plots import (  # noqa: E402
+    regenerate_loss_plot_from_wandb,
+    run_final_evaluation,
+)
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -116,6 +119,9 @@ def main():
         desc="Formatting eval prompts",
     )
     logger.info(f"Eval dataset: {len(eval_dataset):,} samples")
+
+    # --- Regenerate loss curve from W&B history (training was interrupted before this ran) ---
+    regenerate_loss_plot_from_wandb(run, cfg["training"]["output_dir"])
 
     # --- Run evaluation ---
     run_final_evaluation(
