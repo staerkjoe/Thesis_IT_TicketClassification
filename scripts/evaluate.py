@@ -203,6 +203,7 @@ def evaluate(cfg: dict, run: Any, args: argparse.Namespace) -> None:
         df=df,
         labels_cfg=labels_cfg,
         max_new_tokens=250,
+        batch_size=args.batch_size,
     )
 
     output_dir = args.output_dir or os.path.join(cfg["training"]["output_dir"], "eval")
@@ -248,6 +249,13 @@ if __name__ == "__main__":
         "--output-dir",
         default=None,
         help="Directory for prediction CSVs (defaults to training output_dir/eval)",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=8,
+        dest="batch_size",
+        help="Number of tickets per inference batch (default: 8)",
     )
     args = parser.parse_args()
 
