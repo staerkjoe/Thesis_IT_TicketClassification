@@ -494,7 +494,7 @@ def run_final_evaluation(
 
     Note: true labels here are silver (machine-generated, S* >= 0.75), not gold.
     Results measure student-teacher agreement, not ground-truth accuracy.
-    Ground-truth accuracy is measured separately in scripts/evaluate_gold.py.
+    Ground-truth accuracy is measured separately in scripts/eval.py.
 
     Metrics logged to W&B:
         eval/final_accuracy          — exact tag match rate vs silver labels

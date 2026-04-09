@@ -2,7 +2,7 @@
 # Ministral 8B — vanilla (non-finetuned) baseline
 #
 # Run:
-#   TORCHDYNAMO_DISABLE=1 poetry run python scripts/evaluate.py \
+#   TORCHDYNAMO_DISABLE=1 poetry run python scripts/eval.py \
 #       --config config/model_config_mistral_vanilla.yaml \
 #       --dataset-type silver \
 #       --data-file data/train/final_eval_data.csv \
