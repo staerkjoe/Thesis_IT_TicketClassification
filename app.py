@@ -8,6 +8,7 @@ The VM must be running and have GPU access.
 Models are pulled from HuggingFace Hub on first load, then cached in VRAM.
 """
 
+import logging
 import math
 import os
 import re
@@ -25,10 +26,15 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
+# Silence the transformers attention-mask deprecation logger bug
+# (transformers calls logger.warning(msg, FutureWarning) which crashes the
+#  Python logging formatter — harmless but very noisy)
+logging.getLogger("transformers.modeling_attn_mask_utils").setLevel(logging.ERROR)
+
 # ── page config (must be first Streamlit call) ────────────────────────────────
 st.set_page_config(
     page_title="IT Ticket Classifier",
-    page_icon="🎓",
+    page_icon="🏷️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -210,6 +216,16 @@ def _extract_tag(text: str) -> str:
     return text
 
 
+def _extract_reasoning(text: str) -> str:
+    """Extract the Reasoning portion from a full model output."""
+    m = re.search(
+        r"Reasoning:\s*(.*?)(?:\nTag:|$)", str(text), re.DOTALL | re.IGNORECASE
+    )
+    if m:
+        return m.group(1).strip()
+    return ""
+
+
 def load_excel(uploaded_file) -> pd.DataFrame:
     df = pd.read_excel(uploaded_file, engine="openpyxl")
     df.columns = [c.strip() for c in df.columns]
@@ -316,6 +332,9 @@ def run_inference(
     result_df["L1"] = [p[0] for p in parsed]
     result_df["L2"] = [p[1] for p in parsed]
     result_df["L3"] = [p[2] for p in parsed]
+
+    # Extract reasoning from full model output
+    result_df["reasoning"] = result_df["full_output"].apply(_extract_reasoning)
 
     return result_df
 
@@ -455,7 +474,7 @@ def fig_confidence_scatter(df: pd.DataFrame):
 
 with st.sidebar:
     if LOGO_PATH.exists():
-        st.image(str(LOGO_PATH), use_container_width=True)
+        st.image(str(LOGO_PATH), width="stretch")
     else:
         st.markdown("## 🎓 IT Ticket Classifier")
 
@@ -563,7 +582,7 @@ with tab_upload:
         preview_cols = ["number", "text"] if "number" in df_raw.columns else ["text"]
         st.dataframe(
             df_raw[preview_cols].head(10).style.set_properties(**{"font-size": "13px"}),
-            use_container_width=True,
+            width="stretch",
             height=300,
         )
 
@@ -583,7 +602,7 @@ with tab_upload:
             margin=dict(l=10, r=10, t=40, b=10),
             height=280,
         )
-        st.plotly_chart(fig_len, use_container_width=True)
+        st.plotly_chart(fig_len, width="stretch")
 
     else:
         st.markdown(
@@ -616,9 +635,7 @@ with tab_run:
         unsafe_allow_html=True,
     )
 
-    run_btn = st.button(
-        "▶  Run classification", type="primary", use_container_width=True
-    )
+    run_btn = st.button("▶  Run classification", type="primary", width="stretch")
 
     if run_btn:
         prog_bar = st.progress(0, text="Loading model…")
@@ -735,22 +752,22 @@ with tab_results:
     # ── Charts row 1 ─────────────────────────────────────────────────────────
     col_l, col_r = st.columns(2)
     with col_l:
-        st.plotly_chart(fig_l1_bar(result_df), use_container_width=True)
+        st.plotly_chart(fig_l1_bar(result_df), width="stretch")
     with col_r:
-        st.plotly_chart(fig_l3_bar(result_df), use_container_width=True)
+        st.plotly_chart(fig_l3_bar(result_df), width="stretch")
 
     # ── Charts row 2 ─────────────────────────────────────────────────────────
     col_l2, col_r2 = st.columns(2)
     with col_l2:
         if "student_confidence" in result_df.columns:
-            st.plotly_chart(fig_confidence_hist(result_df), use_container_width=True)
+            st.plotly_chart(fig_confidence_hist(result_df), width="stretch")
     with col_r2:
         if "latency_ms" in result_df.columns:
-            st.plotly_chart(fig_latency_hist(result_df), use_container_width=True)
+            st.plotly_chart(fig_latency_hist(result_df), width="stretch")
 
     # ── Confidence vs ticket length scatter ───────────────────────────────────
     if "student_confidence" in result_df.columns:
-        st.plotly_chart(fig_confidence_scatter(result_df), use_container_width=True)
+        st.plotly_chart(fig_confidence_scatter(result_df), width="stretch")
 
     # ── Low-confidence review table ───────────────────────────────────────────
     st.markdown(f"### ⚠️ Low-confidence tickets  (confidence < {conf_threshold})")
@@ -774,12 +791,13 @@ with tab_results:
                 "L3",
                 "student_confidence",
                 "is_fallback",
+                "reasoning",
             ]
             if c in low_conf_df.columns
         ]
         st.dataframe(
             low_conf_df[show_cols].sort_values("student_confidence"),
-            use_container_width=True,
+            width="stretch",
             height=280,
         )
 
@@ -794,6 +812,7 @@ with tab_results:
                 "L1",
                 "L2",
                 "L3",
+                "reasoning",
                 "student_confidence",
                 "is_fallback",
                 "format_compliant",
@@ -801,7 +820,7 @@ with tab_results:
             ]
             if c in result_df.columns
         ]
-        st.dataframe(result_df[show_cols_full], use_container_width=True, height=400)
+        st.dataframe(result_df[show_cols_full], width="stretch", height=400)
 
     # ── Download ──────────────────────────────────────────────────────────────
     st.markdown("---")
@@ -812,5 +831,5 @@ with tab_results:
         data=csv_bytes,
         file_name=f"predictions_{model_cfg['key']}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
         mime="text/csv",
-        use_container_width=True,
+        width="stretch",
     )
