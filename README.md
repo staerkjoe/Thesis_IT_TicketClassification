@@ -149,21 +149,51 @@ The pipeline updates 0.9% of model parameters at a compute cost two orders of ma
 
 ```
 ├── data/
-│   ├── raw/                    # Raw ServiceNow exports (not included — PII)
-│   └── silver/                 # Filtered silver dataset (not included — PII)
-├── src/
-│   ├── data_handler.py         # Data loading, cleaning, consolidation
-│   ├── PII_detection.py        # Presidio-based anonymisation pipeline
-│   ├── label_creation_cisc.py  # CISC teacher labelling pipeline
-│   ├── config_labels.yaml      # Prompt templates and taxonomy config
-│   ├── train_qlora.py          # QLoRA fine-tuning (LLaMA / Mistral)
-│   └── evaluate.py             # Evaluation framework
-├── app/
-│   └── streamlit_app.py        # Demo application
+│   ├── raw/                                    # Raw ServiceNow exports (not included — PII)
+│   ├── silver/                                 # Teacher-labelled silver dataset (not included — PII)
+│   └── gold/                                   # 50-ticket expert-labelled gold standard (not included — PII)
+│
+├── config/
+│   ├── model_config_base.yaml                  # Shared A100 production defaults
+│   ├── model_config_llama.yaml                 # Llama-3.1-8B fine-tuning overrides
+│   ├── model_config_llama_vanilla.yaml         # Llama-3.1-8B vanilla baseline (eval only)
+│   ├── model_config_mistral.yaml               # Ministral-8B fine-tuning overrides
+│   ├── model_config_mistral_vanilla.yaml       # Ministral-8B vanilla baseline (eval only)
+│   ├── pipeline_test_config.yaml               # Fast end-to-end smoke-test overrides
+│   ├── prompt_template_teacher.yaml            # GPT-5 teacher prompt + label taxonomy
+│   └── prompt_template_student.yaml            # Student SFT prompt template
+│
+├── utils/
+│   ├── preprocessing/
+│   │   └── PII_detection.py                    # Presidio-based anonymisation pipeline
+│   │   └── data_handler.py                    
+│   ├── tagging/
+│   │   └── label_creation.py             
+│   │   └── label_creation_cisc.py              # CISC teacher labelling pipeline (GPT-5 / self-consistency)
+│   │   └── label_creation_dynamic_cisc.py      # RAG-CISC teacher labelling pipeline
+│   ├── training/
+│   │   ├── llm_handler.py                      # Model loading, LoRA setup, prompt formatting
+│   │   └── wandb_plots.py                      # Training callbacks, loss curves, W&B logging
+│   └── evaluation/
+│       └── wandb_eval.py                       # Full eval pipeline (silver / fresh / gold metrics)
+│
+├── scripts/
+│   ├── train.py                                # Stage II distillation fine-tuning entry point
+│   ├── eval.py                                 # Post-training evaluation (any dataset type)
+│   └── eval_posttrain.py                       # Resume eval from existing W&B run + checkpoint
+│
+├── app.py                                      # Interactive demo application
+│
 ├── notebooks/
-│   └── EDA.ipynb               # Exploratory data analysis
-└── thesis/
-    └── *.tex                   # LaTeX source files
+│   ├── EDA & Preprocessing/
+│   ├── tagging/
+│   ├── Results Analysis/
+│
+├── pyproject.toml                              # Poetry dependency manifest
+├── poetry.lock                                 # Pinned dependency lockfile
+├── .pre-commit-config.yaml                      
+├── .env                                        # API keys and secrets (not included)
+└── .gitignore
 ```
 
 ---
@@ -204,4 +234,4 @@ Key references used in this work:
 
 ---
 
-*Data used in this thesis is proprietary to Nuuday A/S and cannot be publicly released. Model weights are available on request subject to Nuuday's data governance approval.*
+*Data used in this thesis is proprietary to Nuuday A/S and cannot be publicly released.*
