@@ -89,12 +89,11 @@ The system is deployed as a **Streamlit application** that accepts raw ticket te
 
 
 ```
-Input:  "Bruger kan ikke logge ind på sin YouSee konto via app"
-Output: Tag: (1g Self service, 2a App, 3 Login issues)
-        Confidence: 0.997
-        Reasoning: "The ticket describes a login failure on the YouSee
-                    app. The issue is self-service oriented and maps
-                    to the login scenario under the app subcategory."
+Input:  "Support - Login/My YouSee/Dawn Native Customer (non migrated)/Other The Customer has, in connection with moving address, received a new TV package and now needs to create a new login, but the system does not allow him to do so as it remembers him from his old login. Therefore, the Customer cannot access his YouSee Play 40 package at all.  Category: Login/Mit YouSee/Dawn Native Customer (non migrated)/Other   loginPoint: App   loginWith: Username YAC-Resolution"
+Output: Tag: (1g Self service, 2g Mit YouSee), 3 Login issues
+        Confidence: 0.9999130753469105
+        Reasoning: "The customer cannot create/access a new My YouSee login after moving address due to the system retaining an old login, which blocks access to their YouSee Play 40 package. 
+        This is a self-service My YouSee authentication problem rather than a TV content issue."
 ```
 
 ---
