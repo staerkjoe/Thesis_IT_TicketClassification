@@ -16,11 +16,11 @@ This thesis investigates whether **black-box knowledge distillation** from a pro
 
 ## The Pipeline
 
-<img width="665" height="665" alt="MethodologyOverview" src="https://github.com/user-attachments/assets/9c1bd2ee-4c71-4e0d-8ec3-6e46f3a6a17f" />
+<img width="1000" height="1000" alt="MethodologyOverview" src="https://github.com/user-attachments/assets/9c1bd2ee-4c71-4e0d-8ec3-6e46f3a6a17f" />
 
 
 
-The pipeline operates in two stages:
+**The pipeline operates in two stages:**
 
 ### Stage I — Silver Label Construction
 
