@@ -16,7 +16,8 @@ This thesis investigates whether **black-box knowledge distillation** from a pro
 
 ## The Pipeline
 
-<img width="665" height="642" alt="MethodologyOverview (1)" src="https://github.com/user-attachments/assets/fd96b41d-3543-4cf6-8ff3-c31033022cc0" />
+<img width="665" height="665" alt="MethodologyOverview" src="https://github.com/user-attachments/assets/9c1bd2ee-4c71-4e0d-8ec3-6e46f3a6a17f" />
+
 
 
 The pipeline operates in two stages:
