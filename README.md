@@ -110,28 +110,16 @@ Output: Tag: (1g Self service, 2g Mit YouSee), 3 Login issues
 
 ## Deployment Recommendation
 
-**Weighted deployment scoring matrix.** Scores are on a 1–5 scale; ↑ = higher is better, ↓ = lower is better. Weighted totals rounded to two decimal places.
+**Recommended Model: LLaMA 3.1-8B (Fine-tuned)**
+Selected as the official production system because it uniquely satisfies Nuuday's three binding constraints:
 
-| **Criterion** | **Weight** | **GPT-5 PoC** | **LLaMA FT** | **Ministral FT** |
-| :--- | :--- | :---: | :---: | :---: |
-| Operational classification quality ↑ | 25% | 4 | 3 | 3 |
-| Data privacy & sovereignty ↑ | 20% | 2 | 5 | 5 |
-| Inference latency ↑ | 15% | 5 | 4 | 2 |
-| Infrastructure cost ↑ | 15% | 3 | 5 | 2 |
-| Long-term maintainability ↑ | 15% | 2 | 5 | 4 |
-| Deployment complexity ↓ | 10% | 5 | 3 | 3 |
-| **Weighted total** | | **3.30** | **4.05** | **3.15** |
+* **GDPR Compliance:** 100% on-premise inference completely eliminates the data exposure risks of external APIs.
+* **Cost & Hardware:** Operates on standard T4 enterprise GPUs (11.87 GB VRAM). Inference costs just **$0.000152 per ticket**—a 92% reduction compared to the GPT-5 API.
+* **Operational Independence:** Rapid 3.9-hour retraining cycle frees Nuuday from vendor pricing shifts and model deprecations.
 
-*Scoring guide:* 5 = excellent, 4 = good, 3 = adequate, 2 = poor, 1 = unacceptable. For ↓ criteria, a score of 5 means the system is the *least* burdensome on that dimension. 
-*Classification quality note:* PoC and student models are scored against different reference sets (human gold vs. teacher silver respectively); see Section 8.4.
-
-A weighted multi-criteria scoring matrix across six dimensions (classification quality, data privacy, latency, cost, maintainability, deployment complexity) yields:
-
-| System | Weighted Score |
-|---|---|
-| **LLaMA 3.1-8B Fine-tuned** | **4.05** ✅ Recommended |
-| GPT-5 PoC | 3.30 |
-| Mistral Fine-tuned | 3.15 |
+### Alternative Architectures
+* **Ministral 8B (Fine-tuned):** *Not recommended.* Fails hardware constraints by requiring an expensive A100 GPU, resulting in a per-ticket cost ($0.002095) higher than the baseline API.
+* **GPT-5 (PoC API):** *Benchmark only.* Fails GDPR constraints for production use but is retained as the baseline human-evaluation benchmark (49% accuracy ceiling).
 
 LLaMA's $15.60 training cost breaks even against continued API usage in approximately **1.8 months** at Nuuday's observed ticket volume (~8,777 tickets/month).
 
