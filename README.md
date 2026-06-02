@@ -36,7 +36,7 @@ This thesis investigates whether **black-box knowledge distillation** from a pro
 
 **The pipeline operates in two stages:**
 
-### Stage I — Silver Label Construction
+### Stage I: Silver Label Construction
 
 GPT-5 acts as a teacher, generating structured pseudo-labels for **26,331 raw IT support tickets** from Nuuday's YouSee DAWN platform (ServiceNow). To ensure label quality without human annotation, we use **Confidence-Informed Self-Consistency (CISC)**:
 
@@ -47,9 +47,9 @@ GPT-5 acts as a teacher, generating structured pseudo-labels for **26,331 raw IT
 
 Three labelling strategies are benchmarked against a 50-ticket human-adjudicated gold standard (Cohen's κ = 0.434). S\* is shown to be a statistically significant predictor of external label validity (Spearman ρ = 0.31–0.41, p < 0.05).
 
-### Stage II — Knowledge Distillation via QLoRA
+### Stage II: Knowledge Distillation via QLoRA
 
-Two open-weight decoder models are fine-tuned on the silver corpus using **QLoRA** — updating only ~0.9% of parameters on a single NVIDIA A100 GPU:
+Two open-weight decoder models are fine-tuned on the silver corpus using **QLoRA**, updating only ~0.9% of parameters on a single NVIDIA A100 GPU:
 
 | Student Model | Parameters updated | Training time | Full-label agreement |
 |---|---|---|---|
@@ -77,7 +77,7 @@ Both models exceed the primary fidelity target of ≥80% agreement with the GPT-
 
 **Key Insights:**
 * **Zero-Shot Baseline Collapse:** Out-of-the-box vanilla models fail completely (~0% full-label match), proving that foundational models cannot parse proprietary corporate taxonomies without target adaptation.
-* **Fidelity Breakthrough:** QLoRA fine-tuning achieves a massive performance leap, yielding **84.14%** (LLaMA) and **84.30%** (Ministral) exact multi-level label agreement with the GPT-5 teacher—handily exceeding the project's primary success target of 80%.
+* **Fidelity Breakthrough:** QLoRA fine-tuning achieves a massive performance leap, yielding **84.14%** (LLaMA) and **84.30%** (Ministral) exact multi-level label agreement with the GPT-5 teacher.
 * **Hierarchical Resilience:** Structural accuracy remains exceptionally robust at the top tiers of categorization (**97% at Level 1** and **95% at Level 2**), with gentle degradation occurring only at the highly granular Level 3 scenario tier.
 * **Uncertainty Calibration:** Expected Calibration Error (ECE) plummets from ~0.80 down to **0.18**. Fine-tuning effectively aligns the models' output confidence scores with their true empirical accuracy rates.
 
@@ -107,7 +107,7 @@ Both models exceed the primary fidelity target of ≥80% agreement with the GPT-
 
 **Key Insights:**
 * **Symptom Ambiguity Congruence:** The student error profile is overwhelmingly dominated by **Level-3 Symptom Confusion** (~200 individual instances for both models). 
-* **Minimal Catastrophic Failures:** Crucially, severe errors—such as Level-1 Cross-Domain misclassifications (e.g., routing a billing failure into a core network outage bucket)—are heavily suppressed.
+* **Minimal Catastrophic Failures:** Crucially, severe errors, such as Level-1 Cross-Domain misclassifications (e.g., routing a billing failure into a core network outage bucket), are heavily suppressed.
 * **Empirical Proof of Rationale Internalization:** The fine-tuned students mirror the exact disagreement signatures found among senior human experts (who initially clashed on 54% of tickets due to inherent taxonomy overlapping). This strongly suggests the student models successfully internalized the teacher's **diagnostic reasoning logic** rather than blindly memorizing superficial text patterns.
 
 ### Reasoning Transfer Evidence
@@ -148,7 +148,7 @@ Output: Tag: (1g Self service, 2g Mit YouSee), 3 Login issues
 Selected as the official production system because it uniquely satisfies Nuuday's three binding constraints:
 
 * **GDPR Compliance:** 100% on-premise inference completely eliminates the data exposure risks of external APIs.
-* **Cost & Hardware:** Operates on standard T4 enterprise GPUs (11.87 GB VRAM). Inference costs just **$0.000152 per ticket**—a 92% reduction compared to the GPT-5 API.
+* **Cost & Hardware:** Operates on standard T4 enterprise GPUs (11.87 GB VRAM). Inference costs just **$0.000152 per ticket** (92% reduction compared to the GPT-5 API).
 * **Operational Independence:** Rapid 3.9-hour retraining cycle frees Nuuday from vendor pricing shifts and model deprecations.
 
 ### Alternative Architectures
@@ -164,7 +164,7 @@ LLaMA's $15.60 training cost breaks even against continued API usage in approxim
 
 ## Green AI
 
-The pipeline updates 0.9% of model parameters at a compute cost two orders of magnitude below conventional full fine-tuning. Strubell et al. (2019) estimated that training a single large Transformer with neural architecture search can emit up to 284 metric tons CO₂e. The QLoRA adapter training in this project represents a negligible fraction of that footprint — without sacrificing classification capability.
+The pipeline updates 0.9% of model parameters at a compute cost two orders of magnitude below conventional full fine-tuning. Strubell et al. (2019) estimated that training a single large Transformer with neural architecture search can emit up to 284 metric tons CO₂e. The QLoRA adapter training in this project represents a negligible fraction of that footprint without sacrificing classification capability.
 
 ---
 
