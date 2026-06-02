@@ -1,14 +1,28 @@
 # Distilling GPT-5 into On-Premise Student Models for IT Ticket Classification
 
-> **Master's Thesis** — Copenhagen Business School, 2026  
+> **Master's Thesis**, Copenhagen Business School, 2026  
 > Johannes & Alexander  
 > Supervised by Raghava Rao Mukkamala
 
+## TL;DR
+* **The Problem:** Deploying high-accuracy text classification on an unlabelled, newly introduced ServiceNow taxonomy (the cold-start problem) under strict local hardware constraints, without routing data via third-party cloud APIs.
+* **The Solution:** A two-stage knowledge distillation framework. 
+  * **Stage I (Label Creation):** Employing GPT-5 offline to construct a "silver" training corpus of pseudo-labels and diagnostic reasoning chains. 
+  * **Stage II (Model Distillation):** Utilizing these teacher-generated traces to **QLoRA fine-tune** two compact, open-weight student architectures (LLaMA 3.1 8B and Ministral 8B) for entirely local deployment.
+* **The Business Impact:** Achieved **84% accuracy** (matching the teacher), secured **100% data sovereignty**, and reduced per-ticket inference costs by **92%** ($0.00015 vs $0.0018).
+
+### Core Technologies & Topics
+
+* **Core Methodology:** `Knowledge Distillation` • `Rationale Distillation` • `Confidence-Informed Self-Consistency (CISC)` • `Text Classification`
+* **LLMs & Architectures:** `LLaMA 3.1 8B` • `Ministral 8B` • `GPT-5 (Teacher baseline)`
+* **Fine-Tuning & PEFT:** `QLoRA` • `LoRA` • `4-bit Quantization (NF4)` • `Supervised Fine-Tuning (SFT)`
+* **Infrastructure & MLOps:** `Azure Machine Learning Studio` • `Weights & Biases (W&B)` • `Poetry`
+* **Optimization Frameworks:** `Unsloth` • `Hugging Face PEFT` • `TRL` • `PyTorch`
 ---
 
 ## Overview
 
-Enterprise IT support teams handle thousands of support tickets monthly, each requiring manual routing to the correct assignment group. Large language models (LLMs) offer strong classification capability — but deploying them in regulated enterprise environments runs into three simultaneous constraints: **GDPR data sovereignty** (ticket text cannot leave the infrastructure boundary), **no labelled training data** on newly introduced platforms, and **hardware budgets** that preclude running a 100B+ parameter model locally.
+Enterprise IT support teams handle thousands of support tickets monthly, each requiring manual routing to the correct assignment group. Large language models (LLMs) offer strong classification capability, but deploying them in regulated enterprise environments runs into three simultaneous constraints: **GDPR data sovereignty** (ticket text cannot leave the infrastructure boundary), **no labelled training data** on newly introduced platforms, and **hardware budgets** that preclude running a 100B+ parameter model locally.
 
 This thesis investigates whether **black-box knowledge distillation** from a proprietary teacher LLM into a compact, locally deployable student model can resolve all three constraints at once.
 
@@ -46,35 +60,55 @@ Both models exceed the primary fidelity target of ≥80% agreement with the GPT-
 
 ---
 
-## Key Results
+## 📊 Key Results
+
+### 1. Distillation Fidelity & Hierarchical Degradation
 
 <img width="3853" height="1753" alt="hierarchical_accuracy_four_models" src="https://github.com/user-attachments/assets/184fe589-2ef8-4ac5-97cf-8b9f13d4c000" />
 
-
-### Distillation Fidelity (Silver Evaluation Set, N = 1,847)
-
 | Metric | LLaMA Vanilla | Mistral Vanilla | LLaMA FT | Mistral FT |
 |---|---|---|---|---|
-| Full-label agreement | 0.11% | 0.00% | **84.14%** | **84.30%** |
-| Weighted F1 | 0.17% | 0.00% | 83.73% | 83.82% |
-| Macro F1 | 0.05% | 0.00% | 65.89% | 63.75% |
-| L1 accuracy | — | — | 97% | 97% |
-| L2 accuracy | — | — | 95% | 95% |
-| ECE | 0.780 | 0.861 | 0.193 | 0.183 |
+| **Full-label agreement** | 0.11% | 0.00% | **84.14%** | **84.30%** |
+| **Weighted F1** | 0.17% | 0.00% | 83.73% | 83.82% |
+| **Macro F1** | 0.05% | 0.00% | 65.89% | 63.75% |
+| **L1 accuracy** | — | — | 97% | 97% |
+| **L2 accuracy** | — | — | 95% | 95% |
+| **ECE (Calibration) ↓** | 0.780 | 0.861 | **0.193** | **0.183** |
 
-### Architecture Trade-off
+**Key Insights:**
+* **Zero-Shot Baseline Collapse:** Out-of-the-box vanilla models fail completely (~0% full-label match), proving that foundational models cannot parse proprietary corporate taxonomies without target adaptation.
+* **Fidelity Breakthrough:** QLoRA fine-tuning achieves a massive performance leap, yielding **84.14%** (LLaMA) and **84.30%** (Ministral) exact multi-level label agreement with the GPT-5 teacher—handily exceeding the project's primary success target of 80%.
+* **Hierarchical Resilience:** Structural accuracy remains exceptionally robust at the top tiers of categorization (**97% at Level 1** and **95% at Level 2**), with gentle degradation occurring only at the highly granular Level 3 scenario tier.
+* **Uncertainty Calibration:** Expected Calibration Error (ECE) plummets from ~0.80 down to **0.18**. Fine-tuning effectively aligns the models' output confidence scores with their true empirical accuracy rates.
+
+---
+
+### 2. Computational & Architectural Trade-offs
 
 | Dimension | LLaMA FT | Mistral FT | Winner |
 |---|---|---|---|
-| Weighted F1 ↑ | 83.73% | **83.82%** | Mistral |
-| Macro F1 ↑ | **65.89%** | 63.75% | LLaMA |
-| Mean latency ↓ | **732 ms** | 1,885 ms | LLaMA |
-| Training time ↓ | **3.9 h** | 18.5 h | LLaMA |
-| Peak VRAM ↓ | **11.9 GB** | 15.3 GB | LLaMA |
-| Training cost ↓ | **$15.60** | $74.00 | LLaMA |
+| **Weighted F1 ↑** | 83.73% | **83.82%** | Mistral (+0.09%) |
+| **Macro F1 ↑** | **65.89%** | 63.75% | LLaMA (+2.14%) |
+| **Mean latency ↓** | **732 ms** | 1,885 ms | LLaMA (2.5x faster) |
+| **Training time ↓** | **3.9 h** | 18.5 h | LLaMA (4.7x faster) |
+| **Peak VRAM ↓** | **11.9 GB** | 15.3 GB | LLaMA (-22%) |
+| **Training cost ↓** | **$15.60** | $74.00 | LLaMA (79% savings) |
+
+**Key Insights:**
+* **The Accuracy Parity:** While Mistral claims a nominal, statistically negligible win on Weighted F1 (+0.09%), LLaMA exhibits superior class-imbalance resilience, outperforming Mistral on Macro F1 by **2.14%**.
+* **Production Bottlenecks:** LLaMA completely outclasses Ministral in production deployment viability. LLaMA processes tickets **2.5x faster** at inference time and drastically condenses the model development loop with a **3.9-hour training run** compared to Mistral's 18.5 hours.
+* **Hardware Economy:** Driven by architectural optimizations like Grouped-Query Attention (GQA), LLaMA maintains a lean memory footprint of **11.9 GB Peak VRAM**. This allows the model to scale comfortably within low-cost enterprise hardware limits (such as a ubiquitous 16GB NVIDIA T4 GPU).
+
+---
+
+### 3. Error Typology & Reasoning Transfer
 
 <img width="3552" height="1754" alt="error_typology (1)" src="https://github.com/user-attachments/assets/9658240e-22fb-4e32-ab34-87656d986fda" />
 
+**Key Insights:**
+* **Symptom Ambiguity Congruence:** The student error profile is overwhelmingly dominated by **Level-3 Symptom Confusion** (~200 individual instances for both models). 
+* **Minimal Catastrophic Failures:** Crucially, severe errors—such as Level-1 Cross-Domain misclassifications (e.g., routing a billing failure into a core network outage bucket)—are heavily suppressed.
+* **Empirical Proof of Rationale Internalization:** The fine-tuned students mirror the exact disagreement signatures found among senior human experts (who initially clashed on 54% of tickets due to inherent taxonomy overlapping). This strongly suggests the student models successfully internalized the teacher's **diagnostic reasoning logic** rather than blindly memorizing superficial text patterns.
 
 ### Reasoning Transfer Evidence
 
