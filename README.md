@@ -60,7 +60,7 @@ Both models exceed the primary fidelity target of ≥80% agreement with the GPT-
 
 ---
 
-## 📊 Key Results
+## Key Results
 
 ### 1. Distillation Fidelity & Hierarchical Degradation
 
